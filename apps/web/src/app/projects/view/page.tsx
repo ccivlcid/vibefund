@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
-import Link from 'next/link'
 import { api } from '@/lib/api'
 import { useAuth } from '@/contexts/auth-context'
 import { Button } from '@/components/ui/button'
@@ -13,12 +12,20 @@ import { Card } from '@/components/ui/card'
 import { PageSpinner } from '@/components/ui/spinner'
 import { Modal } from '@/components/ui/modal'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
+import { Select } from '@/components/ui/select'
 
 import { formatCurrency, formatDate, daysLeft, progressPercent } from '@/lib/utils'
 
+const REWARD_TYPE_OPTIONS = [
+  { value: 'beta', label: '얼리버드 / 베타' },
+  { value: 'lifetime', label: '평생 이용권' },
+  { value: 'subscription_discount', label: '구독 할인' },
+]
+
 const VIEW_PROJECT_ID_KEY = 'vibefund_view_project_id'
 
-interface Reward { id: string; title: string; description: string; amount: number; reward_type: string; delivery_date: string | null }
+interface Reward { id: string; name?: string; title?: string; description: string; amount: number; type: string }
 interface Comment { id: string; content: string; created_at: string; user: { name: string } }
 interface Update { id: string; title: string; content: string; created_at: string }
 interface Funding { goal_amount: number; current_amount: number; deadline: string; backer_count: number; progress_percent: number }
@@ -47,6 +54,14 @@ export default function ProjectViewPage() {
   const [pledgeError, setPledgeError] = useState('')
   const [commentText, setComment] = useState('')
   const [commenting, setCommenting] = useState(false)
+  const [rewardModalOpen, setRewardModalOpen] = useState(false)
+  const [editingReward, setEditingReward] = useState<Reward | null>(null)
+  const [rewardName, setRewardName] = useState('')
+  const [rewardDesc, setRewardDesc] = useState('')
+  const [rewardAmount, setRewardAmount] = useState('')
+  const [rewardType, setRewardType] = useState<'beta' | 'lifetime' | 'subscription_discount'>('beta')
+  const [rewardSaving, setRewardSaving] = useState(false)
+  const [rewardError, setRewardError] = useState('')
 
   useEffect(() => {
     const id = typeof window !== 'undefined' ? sessionStorage.getItem(VIEW_PROJECT_ID_KEY) : null
@@ -103,6 +118,60 @@ export default function ProjectViewPage() {
     }
   }
 
+  const openRewardModal = (reward?: Reward) => {
+    if (reward) {
+      setEditingReward(reward)
+      setRewardName(reward.name ?? (reward as { title?: string }).title ?? '')
+      setRewardDesc(reward.description ?? '')
+      setRewardAmount(String(reward.amount))
+      setRewardType((reward.type as 'beta' | 'lifetime' | 'subscription_discount') || 'beta')
+    } else {
+      setEditingReward(null)
+      setRewardName('')
+      setRewardDesc('')
+      setRewardAmount('')
+      setRewardType('beta')
+    }
+    setRewardError('')
+    setRewardModalOpen(true)
+  }
+
+  const handleSaveReward = async () => {
+    if (!projectId) return
+    const name = rewardName.trim()
+    const description = rewardDesc.trim()
+    const amount = Number(rewardAmount)
+    if (!name) { setRewardError('리워드 이름을 입력해 주세요'); return }
+    if (!description) { setRewardError('설명을 입력해 주세요'); return }
+    if (!Number.isFinite(amount) || amount < 0) { setRewardError('금액을 입력해 주세요 (0 이상)'); return }
+    setRewardSaving(true)
+    setRewardError('')
+    try {
+      if (editingReward) {
+        await api.patch(`/projects/${projectId}/rewards/${editingReward.id}`, { name, description, amount, type: rewardType })
+      } else {
+        await api.post(`/projects/${projectId}/rewards`, { name, description, amount, type: rewardType })
+      }
+      setRewardModalOpen(false)
+      refreshProject()
+    } catch (e: unknown) {
+      const err = e as { message?: string }
+      setRewardError(err?.message ?? '저장 실패')
+    } finally {
+      setRewardSaving(false)
+    }
+  }
+
+  const handleDeleteReward = async (rewardId: string) => {
+    if (!projectId || !confirm('이 리워드를 삭제할까요?')) return
+    try {
+      await api.delete(`/projects/${projectId}/rewards/${rewardId}`)
+      refreshProject()
+    } catch {
+      // ignore
+    }
+  }
+
   if (loading || !projectId) return <PageSpinner />
   if (!project) return null
 
@@ -126,9 +195,9 @@ export default function ProjectViewPage() {
       <div className="grid grid-cols-1 gap-10 lg:grid-cols-3">
         <div className="lg:col-span-2 space-y-8">
           {project.service_url ? (
-            <div className="space-y-2">
+            <div className="space-y-3">
               <h3 className="text-sm font-semibold text-gray-700">서비스 체험</h3>
-              <div className="relative h-[420px] w-full overflow-hidden rounded-lg border border-gray-200 bg-white">
+              <div className="relative h-[420px] w-full overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
                 <iframe
                   src={project.service_url}
                   title={`${project.title} 미리보기`}
@@ -139,7 +208,7 @@ export default function ProjectViewPage() {
               </div>
             </div>
           ) : null}
-          <div className="relative h-72 w-full overflow-hidden rounded-lg bg-gray-100">
+          <div className="relative h-72 w-full overflow-hidden rounded-xl bg-slate-100 shadow-inner">
             {project.thumbnail_url ? (
               <Image src={project.thumbnail_url} alt={project.title} fill className="object-cover" />
             ) : (
@@ -165,13 +234,13 @@ export default function ProjectViewPage() {
               <span>&middot;</span>
               <span>{formatDate(project.created_at)}</span>
               {isOwner && (
-                <Link
-                  href="/projects/edit"
-                  onClick={() => sessionStorage.setItem('vibefund_edit_project_id', project.id)}
+                <button
+                  type="button"
+                  onClick={() => openRewardModal()}
                   className="ml-auto text-xs text-gray-500 hover:text-gray-900 underline"
                 >
-                  수정
-                </Link>
+                  리워드 관리
+                </button>
               )}
             </div>
           </div>
@@ -182,10 +251,10 @@ export default function ProjectViewPage() {
                 <button
                   key={t.key}
                   onClick={() => setTab(t.key)}
-                  className={`px-4 py-2.5 text-sm transition-colors border-b-2 -mb-px ${
+                  className={`rounded-t-lg px-4 py-3 text-sm font-medium transition-colors border-b-2 -mb-px ${
                     tab === t.key
-                      ? 'border-gray-900 font-semibold text-gray-900'
-                      : 'border-transparent text-gray-500 hover:text-gray-700'
+                      ? 'border-indigo-600 text-indigo-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50/50'
                   }`}
                 >
                   {t.label}
@@ -278,6 +347,41 @@ export default function ProjectViewPage() {
             )}
           </Card>
 
+          {isOwner && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-gray-900">리워드 관리</h3>
+                <Button variant="outline" size="sm" onClick={() => openRewardModal()}>
+                  리워드 추가
+                </Button>
+              </div>
+              {rewards.length === 0 ? (
+                <p className="rounded-lg border border-dashed border-gray-200 bg-gray-50/50 py-6 text-center text-sm text-gray-500">
+                  리워드를 추가하면 후원자가 선택할 수 있습니다.
+                </p>
+              ) : (
+                <ul className="space-y-2">
+                  {rewards.map((r) => (
+                    <li
+                      key={r.id}
+                      className="flex items-start justify-between gap-2 rounded-lg border border-gray-200 bg-white p-3"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-gray-900">{r.name ?? (r as { title?: string }).title}</p>
+                        <p className="text-xs text-gray-500 line-clamp-1">{r.description}</p>
+                        <p className="mt-0.5 text-xs font-semibold text-gray-700">{formatCurrency(r.amount)}</p>
+                      </div>
+                      <div className="flex shrink-0 gap-1">
+                        <Button variant="ghost" size="sm" onClick={() => openRewardModal(r)}>수정</Button>
+                        <Button variant="ghost" size="sm" className="text-red-600 hover:bg-red-50" onClick={() => handleDeleteReward(r.id)}>삭제</Button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+
           {rewards.length > 0 && (
             <div className="space-y-3">
               <h3 className="text-sm font-semibold text-gray-900">리워드</h3>
@@ -287,16 +391,13 @@ export default function ProjectViewPage() {
                   type="button"
                   disabled={!canFund}
                   onClick={() => { setReward(r); setPledgeAmt(String(r.amount)); setPledgeError(''); setPledgeOpen(true) }}
-                  className="w-full rounded-lg border border-gray-200 bg-white p-4 text-left transition-colors hover:border-gray-400 disabled:cursor-default disabled:opacity-60"
+                  className="w-full rounded-xl border border-gray-200 bg-white p-4 text-left shadow-sm transition-all hover:border-indigo-300 hover:shadow-md disabled:cursor-default disabled:opacity-60"
                 >
                   <div className="flex items-center justify-between">
-                    <span className="text-sm font-semibold text-gray-900">{(r as Reward & { name?: string }).name ?? r.title}</span>
+                    <span className="text-sm font-semibold text-gray-900">{r.name ?? (r as { title?: string }).title}</span>
                     <span className="text-sm font-bold text-gray-900">{formatCurrency(r.amount)}</span>
                   </div>
                   <p className="mt-1 text-xs text-gray-500 line-clamp-2">{r.description}</p>
-                  {r.delivery_date && (
-                    <p className="mt-1 text-xs text-gray-400">배송 예정: {formatDate(r.delivery_date)}</p>
-                  )}
                 </button>
               ))}
             </div>
@@ -307,8 +408,8 @@ export default function ProjectViewPage() {
       <Modal open={pledgeOpen} onClose={() => setPledgeOpen(false)} title="펀딩하기" size="sm">
         <div className="space-y-4">
           {selectedReward && (
-            <div className="rounded bg-gray-50 p-3">
-              <p className="text-xs font-medium text-gray-700">{(selectedReward as Reward & { name?: string }).name ?? selectedReward.title}</p>
+            <div className="rounded-lg bg-gray-50 p-3">
+              <p className="text-sm font-medium text-gray-700">{selectedReward.name ?? (selectedReward as { title?: string }).title}</p>
               <p className="text-xs text-gray-500 mt-0.5">{selectedReward.description}</p>
             </div>
           )}
@@ -324,6 +425,43 @@ export default function ProjectViewPage() {
           <Button fullWidth loading={pledging} onClick={handlePledge}>
             확인
           </Button>
+        </div>
+      </Modal>
+
+      <Modal open={rewardModalOpen} onClose={() => setRewardModalOpen(false)} title={editingReward ? '리워드 수정' : '리워드 추가'} size="sm">
+        <div className="space-y-4">
+          <Input
+            label="리워드 이름"
+            value={rewardName}
+            onChange={(e) => { setRewardName(e.target.value); setRewardError('') }}
+            placeholder="예: 얼리버드 1년 이용권"
+          />
+          <Textarea
+            label="설명"
+            value={rewardDesc}
+            onChange={(e) => { setRewardDesc(e.target.value); setRewardError('') }}
+            placeholder="리워드에 대한 설명"
+            rows={3}
+          />
+          <Input
+            label="금액 (원)"
+            type="number"
+            min={0}
+            value={rewardAmount}
+            onChange={(e) => { setRewardAmount(e.target.value); setRewardError('') }}
+            placeholder="0"
+          />
+          <Select
+            label="유형"
+            options={REWARD_TYPE_OPTIONS}
+            value={rewardType}
+            onChange={(e) => setRewardType(e.target.value as 'beta' | 'lifetime' | 'subscription_discount')}
+          />
+          {rewardError && <p className="text-xs text-red-500">{rewardError}</p>}
+          <div className="flex gap-2 justify-end">
+            <Button variant="outline" onClick={() => setRewardModalOpen(false)}>취소</Button>
+            <Button loading={rewardSaving} onClick={handleSaveReward}>저장</Button>
+          </div>
         </div>
       </Modal>
     </div>

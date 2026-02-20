@@ -16,7 +16,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="ko">
-      <body className={`${geist.className} bg-gray-50 text-gray-900 antialiased`}>
+      <body className={`${geist.className} min-h-screen bg-gradient-to-b from-slate-50 to-gray-100 antialiased`}>
         <AuthProvider>
           <div className="flex min-h-screen flex-col">
             <Header />

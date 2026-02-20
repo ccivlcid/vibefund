@@ -49,8 +49,8 @@ export function ProjectCard({ id, title, thumbnail_url, status, funding }: Proje
 
   return (
     <button type="button" onClick={goToView} className="group block w-full text-left">
-      <article className="rounded-lg border border-gray-200 bg-white transition-shadow hover:shadow-md overflow-hidden">
-        <div className="relative h-44 w-full bg-gray-100">
+      <article className="overflow-hidden rounded-xl border border-gray-200/80 bg-white shadow-sm transition-all duration-200 hover:shadow-md hover:border-indigo-200/80">
+        <div className="relative h-48 w-full bg-slate-100">
           {thumbnail_url ? (
             <Image
               src={thumbnail_url}
@@ -60,34 +60,34 @@ export function ProjectCard({ id, title, thumbnail_url, status, funding }: Proje
               sizes="(max-width: 768px) 100vw, 33vw"
             />
           ) : (
-            <div className="flex h-full items-center justify-center text-sm text-gray-300">
+            <div className="flex h-full items-center justify-center text-sm text-slate-400">
               이미지 없음
             </div>
           )}
         </div>
 
-        <div className="p-4">
-          <div className="mb-2 flex items-start justify-between gap-2">
-            <h3 className="text-sm font-semibold text-gray-900 leading-snug line-clamp-2">
+        <div className="p-5">
+          <div className="mb-3 flex items-start justify-between gap-2">
+            <h3 className="text-base font-semibold text-gray-900 leading-snug line-clamp-2">
               {truncate(title, 60)}
             </h3>
             <Badge variant={badge.variant}>{badge.label}</Badge>
           </div>
 
           {f && (
-            <div className="mt-3 space-y-2">
+            <div className="mt-4 space-y-2.5">
               <Progress value={pct} />
-              <div className="flex items-center justify-between text-xs text-gray-500">
+              <div className="flex items-center justify-between text-xs text-gray-600">
                 <span>
                   <span className="font-semibold text-gray-900">{formatCurrency(current)}</span>
                   {' '}달성
                 </span>
-                <span className="font-medium text-gray-700">{pct}%</span>
+                <span className="font-medium text-indigo-600">{pct}%</span>
               </div>
-              <div className="flex items-center justify-between text-xs text-gray-400">
+              <div className="flex items-center justify-between text-xs text-gray-500">
                 <span>목표 {formatCurrency(goal)}</span>
                 {days !== null && (
-                  <span>{days > 0 ? `${days}일 남음` : '종료'}</span>
+                  <span className="font-medium">{days > 0 ? `${days}일 남음` : '종료'}</span>
                 )}
               </div>
             </div>
