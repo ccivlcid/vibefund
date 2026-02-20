@@ -6,7 +6,7 @@ import { parseBody } from '@/lib/validate'
 async function getMe(req: AuthedRequest) {
   const { data, error } = await supabase
     .from('users')
-    .select('id, email, name, avatar_url, bio, provider, role, created_at, updated_at')
+    .select('id, email, name, avatar_url, bio, provider, role, balance, created_at, updated_at')
     .eq('id', req.user.sub)
     .single()
   if (error || !data) return null
@@ -42,7 +42,7 @@ export const PATCH = withAuth(async (req: AuthedRequest) => {
     .from('users')
     .update(parsed.data)
     .eq('id', req.user.sub)
-    .select('id, email, name, avatar_url, bio, role, updated_at')
+    .select('id, email, name, avatar_url, bio, role, balance, updated_at')
     .single()
 
   if (error || !data) return errorResponse(500, 'INTERNAL_ERROR', '프로필 수정 실패')

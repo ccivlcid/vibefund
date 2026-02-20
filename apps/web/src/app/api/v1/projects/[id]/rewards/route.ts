@@ -8,7 +8,7 @@ const rewardSchema = z.object({
   name: z.string().min(1).max(100),
   description: z.string().min(1),
   amount: z.number().int().min(0),
-  type: z.enum(['beta', 'lifetime', 'subscription_discount']),
+  type: z.enum(['beta', 'lifetime', 'subscription_discount', 'supporter']),
 })
 
 // GET /api/v1/projects/:id/rewards

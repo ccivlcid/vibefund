@@ -12,6 +12,7 @@ const createSchema = z.object({
   category: z.string().optional(),
   status: z.enum(['Prototype', 'Beta', 'Live']).default('Prototype'),
   thumbnail_url: z.string().url().optional(),
+  feedback_preference: z.enum(['validation_focus', 'comments_focus', 'both']).optional(),
 })
 
 // GET /api/v1/projects — 공개 프로젝트 목록

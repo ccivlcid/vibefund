@@ -9,6 +9,7 @@ import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Modal } from '@/components/ui/modal'
 import { PageSpinner } from '@/components/ui/spinner'
 import { formatCurrency, formatDate } from '@/lib/utils'
 
@@ -45,6 +46,8 @@ const PLEDGE_BADGE: Record<string, { label: string; variant: 'success' | 'warnin
   refunded:  { label: '환불',   variant: 'muted' },
 }
 
+const CHARGE_AMOUNTS = [10000, 50000, 100000, 500000]
+
 export default function MyPage() {
   const { user, loading: authLoading, refresh: authRefresh } = useAuth()
   const router = useRouter()
@@ -56,6 +59,10 @@ export default function MyPage() {
   const [name, setName]           = useState('')
   const [saving, setSaving]       = useState(false)
   const [profileMsg, setProfileMsg] = useState('')
+  const [chargeOpen, setChargeOpen] = useState(false)
+  const [chargeAmount, setChargeAmount] = useState('')
+  const [charging, setCharging] = useState(false)
+  const [chargeError, setChargeError] = useState('')
 
   useEffect(() => {
     if (!authLoading && !user) router.replace('/auth/login')
@@ -99,7 +106,31 @@ export default function MyPage() {
     }
   }
 
+  const handleCharge = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const amount = Number(chargeAmount.replace(/,/g, ''))
+    if (!Number.isInteger(amount) || amount < 1000) {
+      setChargeError('최소 1,000원 이상 입력해 주세요.')
+      return
+    }
+    setCharging(true)
+    setChargeError('')
+    try {
+      await api.post<{ data: { balance: number; charged: number } }>('/users/me/charge', { amount })
+      await authRefresh()
+      setChargeOpen(false)
+      setChargeAmount('')
+    } catch (err: unknown) {
+      const e = err as { error?: { message?: string }; message?: string }
+      setChargeError(e?.error?.message ?? e?.message ?? '충전에 실패했습니다.')
+    } finally {
+      setCharging(false)
+    }
+  }
+
   if (authLoading || !user) return <PageSpinner />
+
+  const balance = Number(user.balance ?? 0)
 
   const tabs: { key: Tab; label: string }[] = [
     { key: 'projects',  label: '내 프로젝트' },
@@ -111,14 +142,28 @@ export default function MyPage() {
   return (
     <div className="mx-auto max-w-4xl px-4 py-10">
       {/* Header */}
-      <div className="mb-8 flex items-center justify-between">
+      <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">{user.name}</h1>
-          <p className="text-sm text-gray-400">{user.email}</p>
+          <h1 className="text-2xl font-bold text-slate-900">{user.name}</h1>
+          <p className="text-sm text-slate-500">{user.email}</p>
         </div>
-        <Link href="/projects/new">
-          <Button variant="primary" size="sm">새 프로젝트</Button>
-        </Link>
+        <div className="flex items-center gap-3">
+          <Card padding="md" className="bg-teal-50/80 border-teal-100">
+            <div className="flex items-center gap-3">
+              <div>
+                <p className="text-xs font-medium text-slate-500">테스트 잔액</p>
+                <p className="text-xl font-bold text-slate-900">{formatCurrency(balance)}</p>
+                <p className="text-xs text-slate-400">프로토타입용 · 실제 결제 없음</p>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => { setChargeOpen(true); setChargeError(''); setChargeAmount('') }} className="shrink-0 border-teal-300 text-teal-700 hover:bg-teal-100">
+                충전하기
+              </Button>
+            </div>
+          </Card>
+          <Link href="/projects/new">
+            <Button variant="primary" size="sm">새 프로젝트</Button>
+          </Link>
+        </div>
       </div>
 
       {/* Tabs */}
@@ -130,8 +175,8 @@ export default function MyPage() {
               onClick={() => setTab(t.key)}
               className={`px-4 py-2.5 text-sm transition-colors border-b-2 -mb-px ${
                 tab === t.key
-                  ? 'border-gray-900 font-semibold text-gray-900'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
+                  ? 'border-teal-600 font-semibold text-slate-900'
+                  : 'border-transparent text-slate-500 hover:text-slate-700'
               }`}
             >
               {t.label}
@@ -257,6 +302,50 @@ export default function MyPage() {
           </form>
         </div>
       )}
+
+      {/* 테스트 충전 모달 */}
+      <Modal open={chargeOpen} onClose={() => { setChargeOpen(false); setChargeError('') }} title="테스트 충전" size="sm">
+        <p className="mb-4 text-sm text-slate-600">
+          프로토타입용 가상 충전입니다. 실제 결제 없이 잔액만 올라갑니다.
+        </p>
+        <form onSubmit={handleCharge} className="space-y-4">
+          <div>
+            <p className="mb-2 text-xs font-medium text-slate-600">금액 선택</p>
+            <div className="flex flex-wrap gap-2">
+              {CHARGE_AMOUNTS.map((a) => (
+                <button
+                  key={a}
+                  type="button"
+                  onClick={() => { setChargeAmount(String(a)); setChargeError('') }}
+                  className={`rounded-lg border px-4 py-2 text-sm font-medium transition-colors ${
+                    chargeAmount === String(a)
+                      ? 'border-teal-500 bg-teal-50 text-teal-700'
+                      : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  {formatCurrency(a)}
+                </button>
+              ))}
+            </div>
+          </div>
+          <Input
+            label="직접 입력 (원)"
+            type="text"
+            inputMode="numeric"
+            placeholder="예: 30000"
+            value={chargeAmount}
+            onChange={(e) => { setChargeAmount(e.target.value.replace(/\D/g, '')); setChargeError('') }}
+            error={chargeError}
+            hint="최소 1,000원 ~ 최대 10,000,000원"
+          />
+          <div className="flex gap-2 justify-end">
+            <Button type="button" variant="outline" onClick={() => setChargeOpen(false)}>취소</Button>
+            <Button type="submit" loading={charging} disabled={!chargeAmount || Number(chargeAmount) < 1000}>
+              충전하기
+            </Button>
+          </div>
+        </form>
+      </Modal>
     </div>
   )
 }

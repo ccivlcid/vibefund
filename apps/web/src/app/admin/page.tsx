@@ -61,9 +61,11 @@ export default function AdminDashboardPage() {
       <div className="mb-8 flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">관리자 대시보드</h1>
         <div className="flex gap-2 text-sm">
-          <Link href="/admin/projects" className="text-gray-500 hover:text-gray-900 underline">프로젝트 관리</Link>
-          <span className="text-gray-200">|</span>
-          <Link href="/admin/users" className="text-gray-500 hover:text-gray-900 underline">사용자 관리</Link>
+          <Link href="/admin/projects" className="text-slate-500 hover:text-slate-900 underline">프로젝트 관리</Link>
+          <span className="text-slate-200">|</span>
+          <Link href="/admin/reports" className="text-slate-500 hover:text-slate-900 underline">댓글 신고</Link>
+          <span className="text-slate-200">|</span>
+          <Link href="/admin/users" className="text-slate-500 hover:text-slate-900 underline">사용자 관리</Link>
         </div>
       </div>
 

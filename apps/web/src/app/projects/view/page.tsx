@@ -19,6 +19,7 @@ import { formatCurrency, formatDate, daysLeft, progressPercent } from '@/lib/uti
 
 const REWARD_TYPE_OPTIONS = [
   { value: 'beta', label: '얼리버드 / 베타' },
+  { value: 'supporter', label: '서포터' },
   { value: 'lifetime', label: '평생 이용권' },
   { value: 'subscription_discount', label: '구독 할인' },
 ]
@@ -26,7 +27,7 @@ const REWARD_TYPE_OPTIONS = [
 const VIEW_PROJECT_ID_KEY = 'vibefund_view_project_id'
 
 interface Reward { id: string; name?: string; title?: string; description: string; amount: number; type: string }
-interface Comment { id: string; content: string; created_at: string; user: { name: string } }
+interface Comment { id: string; content: string; parent_id?: string | null; created_at: string; user: { name: string } }
 interface Update { id: string; title: string; content: string; created_at: string }
 interface Funding { goal_amount: number; current_amount: number; deadline: string; backer_count: number; progress_percent: number }
 interface Project {
@@ -37,16 +38,20 @@ interface Project {
   rewards: Reward[]
   comments: Comment[]
   updates: Update[]
+  vibe_score?: number
+  verification_count?: number
+  last_update_at?: string
+  feedback_preference?: 'validation_focus' | 'comments_focus' | 'both' | null
 }
 
 export default function ProjectViewPage() {
   const router = useRouter()
-  const { user } = useAuth()
+  const { user, refresh: refreshUser } = useAuth()
 
   const [projectId, setProjectId] = useState<string | null>(null)
   const [project, setProject] = useState<Project | null>(null)
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState<'info' | 'updates' | 'comments'>('info')
+  const [tab, setTab] = useState<'overview' | 'demo' | 'validation' | 'updates' | 'comments'>('overview')
   const [pledgeOpen, setPledgeOpen] = useState(false)
   const [selectedReward, setReward] = useState<Reward | null>(null)
   const [pledgeAmt, setPledgeAmt] = useState('')
@@ -59,9 +64,20 @@ export default function ProjectViewPage() {
   const [rewardName, setRewardName] = useState('')
   const [rewardDesc, setRewardDesc] = useState('')
   const [rewardAmount, setRewardAmount] = useState('')
-  const [rewardType, setRewardType] = useState<'beta' | 'lifetime' | 'subscription_discount'>('beta')
+  const [rewardType, setRewardType] = useState<'beta' | 'lifetime' | 'subscription_discount' | 'supporter'>('beta')
   const [rewardSaving, setRewardSaving] = useState(false)
   const [rewardError, setRewardError] = useState('')
+  const [verificationCounts, setVerificationCounts] = useState<{ q1_use_intent: number; q2_monthly_pay: number; q3_improvement: number } | null>(null)
+  const [vq1, setVq1] = useState('')
+  const [vq2, setVq2] = useState('')
+  const [vq3, setVq3] = useState('')
+  const [verificationSubmitting, setVerificationSubmitting] = useState(false)
+  const [verificationDone, setVerificationDone] = useState(false)
+  const [replyToId, setReplyToId] = useState<string | null>(null)
+  const [replyText, setReplyText] = useState('')
+  const [reportingId, setReportingId] = useState<string | null>(null)
+  const [reportReason, setReportReason] = useState('')
+  const [reportSubmitting, setReportSubmitting] = useState(false)
 
   useEffect(() => {
     const id = typeof window !== 'undefined' ? sessionStorage.getItem(VIEW_PROJECT_ID_KEY) : null
@@ -70,7 +86,7 @@ export default function ProjectViewPage() {
       return
     }
     setProjectId(id)
-    api.post<{ data: Project }>('/projects/detail', { id })
+    api.post<{ data: Project }>('/project-detail', { id })
       .then((r) => setProject(r.data))
       .catch(() => router.replace('/'))
       .finally(() => setLoading(false))
@@ -78,9 +94,39 @@ export default function ProjectViewPage() {
 
   const refreshProject = () => {
     if (!projectId) return
-    api.post<{ data: Project }>('/projects/detail', { id: projectId })
+    api.post<{ data: Project }>('/project-detail', { id: projectId })
       .then((r) => setProject(r.data))
       .catch(() => {})
+  }
+
+  const loadVerificationCounts = () => {
+    if (!projectId) return
+    api.get<{ data: { counts: { q1_use_intent: number; q2_monthly_pay: number; q3_improvement: number } } }>(
+      `/projects/${projectId}/verification-responses`
+    ).then((r) => setVerificationCounts(r.data.counts)).catch(() => {})
+  }
+
+  useEffect(() => {
+    if (projectId) loadVerificationCounts()
+  }, [projectId])
+
+  const handleVerificationSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!user) { router.push('/auth/login'); return }
+    if (!projectId || (!vq1.trim() && !vq2.trim() && !vq3.trim())) return
+    setVerificationSubmitting(true)
+    try {
+      await api.post(`/projects/${projectId}/verification-responses`, {
+        q1_use_intent: vq1.trim() || undefined,
+        q2_monthly_pay: vq2.trim() || undefined,
+        q3_improvement: vq3.trim() || undefined,
+      })
+      setVerificationDone(true)
+      setVq1(''); setVq2(''); setVq3('')
+      loadVerificationCounts()
+    } finally {
+      setVerificationSubmitting(false)
+    }
   }
 
   const handlePledge = async () => {
@@ -96,9 +142,10 @@ export default function ProjectViewPage() {
       })
       setPledgeOpen(false)
       refreshProject()
+      refreshUser()
     } catch (e: unknown) {
-      const err = e as { message?: string }
-      setPledgeError(err?.message ?? '펀딩 실패')
+      const err = e as { error?: { message?: string }; message?: string }
+      setPledgeError(err?.error?.message ?? err?.message ?? '펀딩 실패')
     } finally {
       setPledging(false)
     }
@@ -110,11 +157,38 @@ export default function ProjectViewPage() {
     if (!projectId || !commentText.trim()) return
     setCommenting(true)
     try {
-      await api.post(`/projects/${projectId}/comments`, { content: commentText })
+      await api.post(`/projects/${projectId}/comments`, { body: commentText })
       setComment('')
       refreshProject()
     } finally {
       setCommenting(false)
+    }
+  }
+
+  const handleReply = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!user || !projectId || !replyToId || !replyText.trim()) return
+    setCommenting(true)
+    try {
+      await api.post(`/projects/${projectId}/comments`, { body: replyText, parent_id: replyToId })
+      setReplyText('')
+      setReplyToId(null)
+      refreshProject()
+    } finally {
+      setCommenting(false)
+    }
+  }
+
+  const handleReport = async () => {
+    if (!reportingId) return
+    setReportSubmitting(true)
+    try {
+      await api.post(`/comments/${reportingId}/report`, { reason: reportReason.trim() || undefined })
+      setReportingId(null)
+      setReportReason('')
+      refreshProject()
+    } finally {
+      setReportSubmitting(false)
     }
   }
 
@@ -124,7 +198,7 @@ export default function ProjectViewPage() {
       setRewardName(reward.name ?? (reward as { title?: string }).title ?? '')
       setRewardDesc(reward.description ?? '')
       setRewardAmount(String(reward.amount))
-      setRewardType((reward.type as 'beta' | 'lifetime' | 'subscription_discount') || 'beta')
+      setRewardType((reward.type as 'beta' | 'lifetime' | 'subscription_discount' | 'supporter') || 'beta')
     } else {
       setEditingReward(null)
       setRewardName('')
@@ -182,32 +256,21 @@ export default function ProjectViewPage() {
   const pct = f ? (f.progress_percent ?? progressPercent(f.current_amount, f.goal_amount)) : 0
   const days = f ? daysLeft(f.deadline) : null
   const isOwner = user?.id === project.user_id
-  const canFund = project.status === 'active' && project.approval_status === 'approved'
+  const hasFunding = !!f && (f.goal_amount ?? 0) > 0
+  const canFund = !isOwner && hasFunding && project.approval_status === 'approved'
 
   const tabs = [
-    { key: 'info', label: '프로젝트 소개' },
-    { key: 'updates', label: `업데이트 ${updates.length}` },
-    { key: 'comments', label: `댓글 ${comments.length}` },
+    { key: 'overview', label: 'Overview' },
+    { key: 'demo', label: 'Demo' },
+    { key: 'validation', label: 'Validation' },
+    { key: 'updates', label: `Updates ${updates.length}` },
+    { key: 'comments', label: `Comments ${comments.length}` },
   ] as const
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10">
       <div className="grid grid-cols-1 gap-10 lg:grid-cols-3">
         <div className="lg:col-span-2 space-y-8">
-          {project.service_url ? (
-            <div className="space-y-3">
-              <h3 className="text-sm font-semibold text-gray-700">서비스 체험</h3>
-              <div className="relative h-[420px] w-full overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-                <iframe
-                  src={project.service_url}
-                  title={`${project.title} 미리보기`}
-                  className="absolute inset-0 h-full w-full border-0"
-                  sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
-                  referrerPolicy="no-referrer"
-                />
-              </div>
-            </div>
-          ) : null}
           <div className="relative h-72 w-full overflow-hidden rounded-xl bg-slate-100 shadow-inner">
             {project.thumbnail_url ? (
               <Image src={project.thumbnail_url} alt={project.title} fill className="object-cover" />
@@ -253,8 +316,8 @@ export default function ProjectViewPage() {
                   onClick={() => setTab(t.key)}
                   className={`rounded-t-lg px-4 py-3 text-sm font-medium transition-colors border-b-2 -mb-px ${
                     tab === t.key
-                      ? 'border-indigo-600 text-indigo-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50/50'
+                      ? 'border-teal-600 text-teal-600'
+                      : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-50/50'
                   }`}
                 >
                   {t.label}
@@ -263,10 +326,131 @@ export default function ProjectViewPage() {
             </div>
           </div>
 
-          {tab === 'info' && (
-            <div className="prose prose-sm max-w-none text-gray-700 whitespace-pre-line">
-              {project.description || <span className="text-gray-400">소개가 없습니다.</span>}
+          {project.feedback_preference && (
+            <div className="mt-4 rounded-lg border border-teal-100 bg-teal-50/60 px-4 py-3 text-sm text-teal-800">
+              {project.feedback_preference === 'validation_focus' && (
+                <>이 프로젝트는 <strong>검증 질문 응답</strong>을 우선 받고 있어요. 체험 후 Validation 탭에서 3문항에 응답해 주세요.</>
+              )}
+              {project.feedback_preference === 'comments_focus' && (
+                <>이 프로젝트는 <strong>댓글 피드백</strong>을 우선 받고 있어요. Comments 탭에서 자유롭게 의견을 남겨 주세요.</>
+              )}
+              {project.feedback_preference === 'both' && (
+                <>검증 질문과 댓글 <strong>둘 다</strong> 환영해요. 체험 후 Validation 응답과 Comments 피드백을 남겨 주세요.</>
+              )}
             </div>
+          )}
+
+          {tab === 'overview' && (
+            <div className="space-y-6">
+              {/* 신뢰 위젯: Vibe Score, 체험 수, 긍정 응답률, 최근 업데이트 */}
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                {typeof project.vibe_score === 'number' && (
+                  <div className="rounded-xl border border-teal-200 bg-teal-50/80 p-4">
+                    <p className="text-xs font-medium text-teal-600">Vibe Score</p>
+                    <p className="mt-1 text-xl font-bold text-teal-800">{project.vibe_score}</p>
+                  </div>
+                )}
+                {typeof project.verification_count === 'number' && (
+                  <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-4">
+                    <p className="text-xs font-medium text-slate-600">체험 수</p>
+                    <p className="mt-1 text-xl font-bold text-slate-800">{project.verification_count}건</p>
+                  </div>
+                )}
+                {verificationCounts && typeof project.verification_count === 'number' && project.verification_count > 0 && (verificationCounts.q1_use_intent > 0 || verificationCounts.q2_monthly_pay > 0 || verificationCounts.q3_improvement > 0) && (
+                  <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-4">
+                    <p className="text-xs font-medium text-slate-600">긍정 응답률</p>
+                    <p className="mt-1 text-xl font-bold text-slate-800">
+                      {Math.round((verificationCounts.q1_use_intent / project.verification_count) * 100)}%
+                    </p>
+                    <p className="text-xs text-slate-500">사용 의향 응답</p>
+                  </div>
+                )}
+                {project.last_update_at && (
+                  <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-4">
+                    <p className="text-xs font-medium text-slate-600">최근 업데이트</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-800">{formatDate(project.last_update_at)}</p>
+                  </div>
+                )}
+              </div>
+              <div className="prose prose-sm max-w-none text-slate-700 whitespace-pre-line">
+                {project.description || <span className="text-slate-400">소개가 없습니다.</span>}
+              </div>
+              {verificationCounts && (verificationCounts.q1_use_intent > 0 || verificationCounts.q2_monthly_pay > 0 || verificationCounts.q3_improvement > 0) && (
+                <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4">
+                  <p className="text-xs font-medium text-slate-500 mb-2">검증 응답 요약</p>
+                  <p className="text-sm text-slate-600">사용의향 {verificationCounts.q1_use_intent} · 지불의사 {verificationCounts.q2_monthly_pay} · 개선점 {verificationCounts.q3_improvement}</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {tab === 'demo' && (
+            <div className="space-y-4">
+              {project.service_url ? (
+                <>
+                  <div className="flex items-center justify-between gap-4">
+                    <h3 className="text-sm font-semibold text-slate-800">서비스 체험</h3>
+                    <a
+                      href={project.service_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm font-medium text-teal-600 hover:underline"
+                    >
+                      새 창에서 열기 ↗
+                    </a>
+                  </div>
+                  <div className="relative h-[420px] w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                    <iframe
+                      src={project.service_url}
+                      title={`${project.title} 미리보기`}
+                      className="absolute inset-0 h-full w-full border-0"
+                      sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+                      referrerPolicy="no-referrer"
+                    />
+                  </div>
+                  <p className="text-xs text-slate-500">
+                    체험 영역은 제작자가 제공한 외부 URL입니다. 결제·개인정보 입력은 권장하지 않습니다.
+                  </p>
+                </>
+              ) : (
+                <p className="text-sm text-slate-500">체험 URL이 없습니다.</p>
+              )}
+            </div>
+          )}
+
+          {tab === 'validation' && (
+            <Card padding="md" className="border-teal-100 bg-gradient-to-br from-teal-50/50 to-white">
+              <h3 className="mb-1 text-sm font-semibold text-slate-800">검증 질문</h3>
+              <p className="mb-4 text-xs text-slate-500">서비스를 체험한 뒤 의견을 남겨 주세요. 제작자와 투자자에게 도움이 됩니다.</p>
+              {verificationDone ? (
+                <p className="rounded-lg bg-teal-50 py-3 text-center text-sm font-medium text-teal-700">응답이 저장되었습니다. 감사합니다.</p>
+              ) : user ? (
+                <form onSubmit={handleVerificationSubmit} className="space-y-4">
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-slate-600">1. 이 서비스를 사용할 의향이 있습니까?</label>
+                    <Input value={vq1} onChange={(e) => setVq1(e.target.value)} placeholder="예: 네, 매일 사용할 것 같습니다" className="bg-white" />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-slate-600">2. 월 얼마까지 지불 가능합니까?</label>
+                    <Input value={vq2} onChange={(e) => setVq2(e.target.value)} placeholder="예: 5,000원" className="bg-white" />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-slate-600">3. 가장 개선이 필요한 부분은?</label>
+                    <Input value={vq3} onChange={(e) => setVq3(e.target.value)} placeholder="예: 모바일 UX" className="bg-white" />
+                  </div>
+                  <Button type="submit" size="md" loading={verificationSubmitting} disabled={!vq1.trim() && !vq2.trim() && !vq3.trim()}>
+                    응답 제출
+                  </Button>
+                </form>
+              ) : (
+                <p className="text-sm text-slate-500">로그인 후 검증 질문에 응답할 수 있습니다.</p>
+              )}
+              {verificationCounts && (verificationCounts.q1_use_intent > 0 || verificationCounts.q2_monthly_pay > 0 || verificationCounts.q3_improvement > 0) && (
+                <div className="mt-4 flex gap-4 border-t border-slate-100 pt-4 text-xs text-slate-500">
+                  <span>응답 수: 사용의향 {verificationCounts.q1_use_intent} · 지불의사 {verificationCounts.q2_monthly_pay} · 개선점 {verificationCounts.q3_improvement}</span>
+                </div>
+              )}
+            </Card>
           )}
 
           {tab === 'updates' && (
@@ -298,21 +482,94 @@ export default function ProjectViewPage() {
                 </Button>
               </form>
               {comments.length === 0 ? (
-                <p className="text-sm text-gray-400">댓글이 없습니다.</p>
-              ) : comments.map((c) => (
-                <div key={c.id} className="flex gap-3 border-b border-gray-100 pb-3">
-                  <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-gray-100 text-xs font-medium text-gray-600">
-                    {c.user?.name?.[0] ?? 'U'}
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-gray-900">{c.user?.name}</span>
-                      <span className="text-xs text-gray-400">{formatDate(c.created_at)}</span>
-                    </div>
-                    <p className="mt-0.5 text-sm text-gray-600">{c.content}</p>
-                  </div>
-                </div>
-              ))}
+                <p className="text-sm text-slate-500">댓글이 없습니다.</p>
+              ) : (() => {
+                const topLevel = comments.filter((c) => !c.parent_id)
+                const byParent = new Map<string, Comment[]>()
+                for (const c of comments) {
+                  if (c.parent_id) {
+                    if (!byParent.has(c.parent_id)) byParent.set(c.parent_id, [])
+                    byParent.get(c.parent_id)!.push(c)
+                  }
+                }
+                return (
+                  <ul className="space-y-4">
+                    {topLevel.map((c) => (
+                      <li key={c.id} className="border-b border-slate-100 pb-4 last:border-0">
+                        <div className="flex gap-3">
+                          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-teal-100 text-sm font-medium text-teal-700">
+                            {c.user?.name?.[0] ?? 'U'}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-sm font-semibold text-slate-900">{c.user?.name}</span>
+                              <span className="text-xs text-slate-400">{formatDate(c.created_at)}</span>
+                              {user && (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => setReplyToId(replyToId === c.id ? null : c.id)}
+                                    className="text-xs text-teal-600 hover:underline"
+                                  >
+                                    답글
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => { setReportingId(c.id); setReportReason('') }}
+                                    className="text-xs text-slate-400 hover:text-red-600"
+                                  >
+                                    신고
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                            <p className="mt-0.5 text-sm text-slate-700 whitespace-pre-wrap">{c.content}</p>
+                            {replyToId === c.id && (
+                              <form onSubmit={handleReply} className="mt-3 flex gap-2">
+                                <Input
+                                  value={replyText}
+                                  onChange={(e) => setReplyText(e.target.value)}
+                                  placeholder="답글 입력..."
+                                  className="flex-1"
+                                />
+                                <Button type="submit" size="sm" disabled={commenting || !replyText.trim()}>등록</Button>
+                                <Button type="button" variant="ghost" size="sm" onClick={() => { setReplyToId(null); setReplyText('') }}>취소</Button>
+                              </form>
+                            )}
+                            {(byParent.get(c.id) ?? []).length > 0 && (
+                              <ul className="mt-3 ml-4 space-y-2 border-l-2 border-teal-100 pl-4">
+                                {(byParent.get(c.id) ?? []).map((r) => (
+                                  <li key={r.id} className="flex gap-2">
+                                    <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-medium text-slate-600">
+                                      {r.user?.name?.[0] ?? 'U'}
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-xs font-medium text-slate-800">{r.user?.name}</span>
+                                        <span className="text-xs text-slate-400">{formatDate(r.created_at)}</span>
+                                        {user && (
+                                          <button
+                                            type="button"
+                                            onClick={() => { setReportingId(r.id); setReportReason('') }}
+                                            className="text-xs text-slate-400 hover:text-red-600"
+                                          >
+                                            신고
+                                          </button>
+                                        )}
+                                      </div>
+                                      <p className="mt-0.5 text-sm text-slate-600 whitespace-pre-wrap">{r.content}</p>
+                                    </div>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )
+              })()}
             </div>
           )}
         </div>
@@ -391,7 +648,7 @@ export default function ProjectViewPage() {
                   type="button"
                   disabled={!canFund}
                   onClick={() => { setReward(r); setPledgeAmt(String(r.amount)); setPledgeError(''); setPledgeOpen(true) }}
-                  className="w-full rounded-xl border border-gray-200 bg-white p-4 text-left shadow-sm transition-all hover:border-indigo-300 hover:shadow-md disabled:cursor-default disabled:opacity-60"
+                  className="w-full rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm transition-all hover:border-teal-300 hover:shadow-md disabled:cursor-default disabled:opacity-60"
                 >
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-semibold text-gray-900">{r.name ?? (r as { title?: string }).title}</span>
@@ -405,26 +662,41 @@ export default function ProjectViewPage() {
         </div>
       </div>
 
-      <Modal open={pledgeOpen} onClose={() => setPledgeOpen(false)} title="펀딩하기" size="sm">
+      <Modal open={pledgeOpen} onClose={() => setPledgeOpen(false)} title="후원하기" size="sm">
         <div className="space-y-4">
-          {selectedReward && (
-            <div className="rounded-lg bg-gray-50 p-3">
-              <p className="text-sm font-medium text-gray-700">{selectedReward.name ?? (selectedReward as { title?: string }).title}</p>
-              <p className="text-xs text-gray-500 mt-0.5">{selectedReward.description}</p>
-            </div>
+          {!user ? (
+            <>
+              <p className="text-sm text-slate-600">후원하려면 로그인해 주세요.</p>
+              <Button fullWidth onClick={() => { setPledgeOpen(false); router.push('/auth/login') }}>로그인</Button>
+            </>
+          ) : (
+            <>
+              {typeof user.balance === 'number' && (
+                <p className="text-sm text-slate-600">보유 잔액: <strong>{user.balance.toLocaleString()}원</strong></p>
+              )}
+              {selectedReward && (
+                <div className="rounded-lg bg-gray-50 p-3">
+                  <p className="text-sm font-medium text-gray-700">{selectedReward.name ?? (selectedReward as { title?: string }).title}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">{selectedReward.description}</p>
+                </div>
+              )}
+              <Input
+                label="후원 금액 (원)"
+                type="number"
+                min={1}
+                value={pledgeAmt}
+                onChange={(e) => { setPledgeAmt(e.target.value); setPledgeError('') }}
+                error={pledgeError}
+                placeholder="10000"
+              />
+              {typeof user.balance === 'number' && pledgeAmt && Number(pledgeAmt) > user.balance && (
+                <p className="text-xs text-red-600">잔액이 부족합니다.</p>
+              )}
+              <Button fullWidth loading={pledging} onClick={handlePledge}>
+                확인
+              </Button>
+            </>
           )}
-          <Input
-            label="펀딩 금액 (원)"
-            type="number"
-            min={1}
-            value={pledgeAmt}
-            onChange={(e) => { setPledgeAmt(e.target.value); setPledgeError('') }}
-            error={pledgeError}
-            placeholder="10000"
-          />
-          <Button fullWidth loading={pledging} onClick={handlePledge}>
-            확인
-          </Button>
         </div>
       </Modal>
 
@@ -455,12 +727,28 @@ export default function ProjectViewPage() {
             label="유형"
             options={REWARD_TYPE_OPTIONS}
             value={rewardType}
-            onChange={(e) => setRewardType(e.target.value as 'beta' | 'lifetime' | 'subscription_discount')}
+            onChange={(e) => setRewardType(e.target.value as 'beta' | 'lifetime' | 'subscription_discount' | 'supporter')}
           />
           {rewardError && <p className="text-xs text-red-500">{rewardError}</p>}
           <div className="flex gap-2 justify-end">
             <Button variant="outline" onClick={() => setRewardModalOpen(false)}>취소</Button>
             <Button loading={rewardSaving} onClick={handleSaveReward}>저장</Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal open={!!reportingId} onClose={() => { setReportingId(null); setReportReason('') }} title="댓글 신고" size="sm">
+        <div className="space-y-4">
+          <p className="text-sm text-slate-600">신고 사유를 선택하거나 입력해 주세요. 검토 후 조치하겠습니다.</p>
+          <Textarea
+            value={reportReason}
+            onChange={(e) => setReportReason(e.target.value)}
+            placeholder="선택: 스팸, 욕설, 개인정보 유출 등"
+            rows={3}
+          />
+          <div className="flex gap-2 justify-end">
+            <Button variant="outline" onClick={() => { setReportingId(null); setReportReason('') }}>취소</Button>
+            <Button loading={reportSubmitting} onClick={handleReport}>신고하기</Button>
           </div>
         </div>
       </Modal>

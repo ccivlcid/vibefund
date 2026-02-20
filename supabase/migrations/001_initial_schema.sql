@@ -1,6 +1,10 @@
--- VibeFund 초기 스키마
+-- VibeFund 초기 스키마 (PRD v2.0 반영)
 -- 마이그레이션: 001_initial_schema.sql
 -- 적용: Supabase SQL 에디터 또는 supabase db push
+--
+-- [기존 DB에 001 이미 적용된 경우]
+-- 아래 "PRD v2.0 추가 테이블" 블록만 복사해 SQL 에디터에서 실행하세요.
+-- funding_progress 뷰에 backer_count가 없다면, 해당 뷰 정의(backer_count 포함)도 별도 실행 권장.
 
 -- ── 확장 ──────────────────────────────────────────────────────────
 create extension if not exists "pgcrypto";  -- gen_random_uuid()
@@ -175,6 +179,7 @@ select
   f.deadline,
   f.min_pledge_amount,
   coalesce(sum(p.amount) filter (where p.status = 'completed'), 0) as current_amount,
+  count(p.id) filter (where p.status = 'completed')::int as backer_count,
   case
     when f.goal_amount = 0 then 0
     else round(
@@ -187,3 +192,68 @@ select
 from fundings f
 left join pledges p on p.project_id = f.project_id
 group by f.id, f.project_id, f.goal_amount, f.deadline, f.min_pledge_amount;
+
+-- ═══════════════════════════════════════════════════════════════════
+-- PRD v2.0 추가 테이블 (기존 DB에 이미 001 적용된 경우 아래 블록만 실행)
+-- ═══════════════════════════════════════════════════════════════════
+
+-- ── ENUM: 댓글 신고 상태 ─────────────────────────────────────────
+create type comment_report_status as enum ('pending', 'resolved_dismissed', 'resolved_deleted');
+
+-- ── 8. verification_responses (검증 질문 3문항 응답) ───────────────
+create table verification_responses (
+  id          uuid primary key default gen_random_uuid(),
+  project_id  uuid not null references projects (id) on delete cascade,
+  user_id     uuid not null references users (id) on delete cascade,
+  question_key text not null check (question_key in ('q1_use_intent', 'q2_monthly_pay', 'q3_improvement')),
+  answer      text not null,
+  created_at  timestamptz not null default now(),
+  unique (project_id, user_id, question_key)
+);
+
+comment on table verification_responses is 'PRD v2.0: 고정 3문항 (사용의향/월지불금액/개선점) 응답. Vibe Score 계산용.';
+
+create index idx_verification_responses_project_id on verification_responses (project_id);
+create index idx_verification_responses_question_key on verification_responses (question_key);
+create index idx_verification_responses_created_at on verification_responses (created_at desc);
+
+-- ── 9. comment_reports (댓글 신고, F-054) ───────────────────────
+create table comment_reports (
+  id               uuid primary key default gen_random_uuid(),
+  comment_id       uuid not null references comments (id) on delete cascade,
+  reporter_user_id uuid not null references users (id) on delete cascade,
+  reason           text,
+  status           comment_report_status not null default 'pending',
+  created_at       timestamptz not null default now(),
+  updated_at       timestamptz not null default now()
+);
+
+comment on table comment_reports is 'PRD v2.0: 댓글 신고. 관리자 신고 처리(F-054)용.';
+
+create index idx_comment_reports_comment_id on comment_reports (comment_id);
+create index idx_comment_reports_status   on comment_reports (status);
+create index idx_comment_reports_created_at on comment_reports (created_at desc);
+
+create trigger trg_comment_reports_updated_at
+  before update on comment_reports
+  for each row execute function set_updated_at();
+
+-- ── 10. vibe_scores (Vibe Score 1.0) ─────────────────────────────
+create table vibe_scores (
+  id            uuid primary key default gen_random_uuid(),
+  project_id    uuid not null unique references projects (id) on delete cascade,
+  score         numeric not null check (score >= 0),
+  calculated_at timestamptz not null default now(),
+  created_at    timestamptz not null default now(),
+  updated_at    timestamptz not null default now()
+);
+
+comment on table vibe_scores is 'PRD v2.0: 프로젝트별 Vibe Score. 체험 수·검증 응답·댓글 등 가중치 반영.';
+
+create index idx_vibe_scores_project_id   on vibe_scores (project_id);
+create index idx_vibe_scores_score       on vibe_scores (score desc);
+create index idx_vibe_scores_calculated_at on vibe_scores (calculated_at desc);
+
+create trigger trg_vibe_scores_updated_at
+  before update on vibe_scores
+  for each row execute function set_updated_at();

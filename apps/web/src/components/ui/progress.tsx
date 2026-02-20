@@ -12,7 +12,7 @@ export function Progress({ value, className, showLabel }: ProgressProps) {
     <div className={cn('flex items-center gap-2', className)}>
       <div className="relative h-2 flex-1 overflow-hidden rounded-full bg-slate-100">
         <div
-          className="h-full rounded-full bg-indigo-600 transition-all duration-500"
+          className="h-full rounded-full bg-teal-600 transition-all duration-500"
           style={{ width: `${clamped}%` }}
         />
       </div>

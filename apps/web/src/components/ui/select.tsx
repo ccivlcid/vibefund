@@ -4,12 +4,13 @@ import { cn } from '@/lib/utils'
 interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
   label?: string
   error?: string
+  hint?: string
   options: { value: string; label: string }[]
   placeholder?: string
 }
 
 export const Select = forwardRef<HTMLSelectElement, SelectProps>(
-  ({ label, error, options, placeholder, className, id, ...props }, ref) => {
+  ({ label, error, hint, options, placeholder, className, id, ...props }, ref) => {
     const inputId = id ?? label?.toLowerCase().replace(/\s+/g, '-')
     return (
       <div className="flex flex-col gap-1">
@@ -35,6 +36,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
           ))}
         </select>
         {error && <p className="text-xs text-red-500">{error}</p>}
+        {hint && !error && <p className="text-xs text-gray-400">{hint}</p>}
       </div>
     )
   }

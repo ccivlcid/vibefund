@@ -4,13 +4,17 @@
 
 @layer base {
   :root {
-    --color-primary: 99 102 241; /* indigo-500 */
-    --color-primary-hover: 79 70 229; /* indigo-600 */
+    /* VibeFund: 데이터·성장 감성 — teal 기반 */
+    --color-primary: 20 184 166;       /* teal-500 */
+    --color-primary-hover: 13 148 136; /* teal-600 */
+    --color-primary-muted: 204 251 241; /* teal-100 */
+    --color-accent: 245 158 11;        /* amber-500, 포인트 */
     --radius-card: 0.75rem;
+    --radius-button: 0.5rem;
     --shadow-card: 0 1px 3px 0 rgb(0 0 0 / 0.06), 0 1px 2px -1px rgb(0 0 0 / 0.06);
-    --shadow-card-hover: 0 4px 6px -1px rgb(0 0 0 / 0.08), 0 2px 4px -2px rgb(0 0 0 / 0.06);
+    --shadow-card-hover: 0 4px 12px -2px rgb(0 0 0 / 0.08), 0 2px 6px -2px rgb(0 0 0 / 0.04);
   }
   body {
-    @apply text-gray-900;
+    @apply bg-slate-50 text-slate-900 antialiased;
   }
 }

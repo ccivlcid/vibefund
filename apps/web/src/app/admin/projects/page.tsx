@@ -48,6 +48,8 @@ export default function AdminProjectsPage() {
   const [reason, setReason]       = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError]         = useState('')
+  const [deleteTarget, setDeleteTarget] = useState<AdminProject | null>(null)
+  const [deleting, setDeleting]   = useState(false)
 
   useEffect(() => {
     if (!authLoading && (!user || user.role !== 'admin')) router.replace('/')
@@ -90,6 +92,21 @@ export default function AdminProjectsPage() {
       setError(err?.message ?? '처리 실패')
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return
+    setDeleting(true)
+    try {
+      await api.delete(`/admin/projects/${deleteTarget.id}`)
+      setDeleteTarget(null)
+      await fetchProjects()
+    } catch (e: unknown) {
+      const err = e as { error?: { message?: string }; message?: string }
+      setError(err?.error?.message ?? err?.message ?? '삭제 실패')
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -164,7 +181,7 @@ export default function AdminProjectsPage() {
                     </td>
                     <td className="px-4 py-3 text-gray-400">{formatDate(p.created_at)}</td>
                     <td className="px-4 py-3">
-                      <div className="flex justify-end gap-1">
+                      <div className="flex justify-end gap-1 flex-wrap">
                         {p.approval_status !== 'approved' && (
                           <Button size="sm" variant="secondary" onClick={() => openModal(p, 'approved')}>
                             승인
@@ -180,6 +197,14 @@ export default function AdminProjectsPage() {
                             숨김
                           </Button>
                         )}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-red-600 border-red-200 hover:bg-red-50"
+                          onClick={() => { setDeleteTarget(p); setError('') }}
+                        >
+                          삭제
+                        </Button>
                       </div>
                     </td>
                   </tr>
@@ -223,6 +248,29 @@ export default function AdminProjectsPage() {
                 onClick={handleApprove}
               >
                 {action ? actionLabels[action] : '확인'}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        title="프로젝트 삭제 (DB에서 제거)"
+        size="sm"
+      >
+        {deleteTarget && (
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600">
+              <span className="font-medium text-gray-900">{deleteTarget.title}</span> 프로젝트를 DB에서
+              완전히 삭제합니다. 연관된 펀딩·리워드·댓글·검증 응답 등도 함께 삭제되며 복구할 수 없습니다.
+            </p>
+            {error && <p className="text-xs text-red-500">{error}</p>}
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setDeleteTarget(null)}>취소</Button>
+              <Button variant="danger" loading={deleting} onClick={handleDelete}>
+                삭제
               </Button>
             </div>
           </div>

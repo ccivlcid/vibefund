@@ -22,7 +22,7 @@ export const PATCH = withAuth(async (req: AuthedRequest, { params }) => {
     name: z.string().min(1).max(100).optional(),
     description: z.string().min(1).optional(),
     amount: z.number().int().min(0).optional(),
-    type: z.enum(['beta', 'lifetime', 'subscription_discount']).optional(),
+    type: z.enum(['beta', 'lifetime', 'subscription_discount', 'supporter']).optional(),
   })
 
   const parsed = await parseBody(req, schema)

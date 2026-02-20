@@ -2,7 +2,7 @@ import { supabase } from '@/lib/supabase'
 
 const PROJECT_SELECT = `
   id, title, short_description, description, service_url, category,
-  status, approval_status, thumbnail_url, created_at, updated_at,
+  status, approval_status, thumbnail_url, feedback_preference, created_at, updated_at,
   user:users!user_id (id, name, avatar_url),
   funding:fundings!project_id (
     id, goal_amount, deadline, min_pledge_amount, created_at
@@ -34,11 +34,12 @@ export async function getProjectWithProgress(id: string) {
   }
   if (funding) funding.backer_count = countRes.count ?? 0
 
-  const [commentsRes, updatesRes] = await Promise.all([
-    supabase.from('comments').select('id, body, created_at, user:users!user_id (id, name, avatar_url)').eq('project_id', id).order('created_at', { ascending: false }).limit(50),
+  const [commentsRes, updatesRes, verificationRes] = await Promise.all([
+    supabase.from('comments').select('id, body, parent_id, created_at, user:users!user_id (id, name, avatar_url)').eq('project_id', id).order('created_at', { ascending: true }).limit(200),
     supabase.from('updates').select('id, title, body, created_at').eq('project_id', id).order('created_at', { ascending: false }).limit(20),
+    supabase.from('verification_responses').select('id', { count: 'exact', head: true }).eq('project_id', id),
   ])
-  const comments = (commentsRes.data ?? []).map((c: { body: string; [k: string]: unknown }) => ({
+  const comments = (commentsRes.data ?? []).map((c: { body: string; parent_id?: string | null; [k: string]: unknown }) => ({
     ...c,
     content: c.body,
   }))
@@ -46,7 +47,18 @@ export async function getProjectWithProgress(id: string) {
     ...u,
     content: u.body,
   }))
-  return { ...project, funding, comments, updates }
+  const verificationCount = (verificationRes as { count?: number }).count ?? 0
+  const vibeScore = verificationCount * 10 + (comments.length) * 2 + updates.length * 1
+  const lastUpdateAt = updates.length > 0 ? (updates[0] as { created_at?: string }).created_at : (project.updated_at ?? project.created_at)
+  return {
+    ...project,
+    funding,
+    comments,
+    updates,
+    vibe_score: vibeScore,
+    verification_count: verificationCount,
+    last_update_at: lastUpdateAt,
+  }
 }
 
 export { PROJECT_SELECT }

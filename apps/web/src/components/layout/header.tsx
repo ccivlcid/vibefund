@@ -8,6 +8,8 @@ import { cn } from '@/lib/utils'
 
 const navLinks = [
   { href: '/',             label: '프로젝트' },
+  { href: '/rankings',     label: '랭킹' },
+  { href: '/community',   label: 'Community' },
   { href: '/projects/new', label: '프로젝트 등록' },
 ]
 
@@ -28,7 +30,7 @@ export function Header() {
           href="/"
           className="text-lg font-bold tracking-tight text-gray-900 transition-opacity hover:opacity-80"
         >
-          <span className="text-indigo-600">Vibe</span>Fund
+          <span className="text-teal-600">Vibe</span>Fund
         </Link>
 
         <nav className="flex items-center gap-0.5">
@@ -39,8 +41,8 @@ export function Header() {
               className={cn(
                 'rounded-lg px-3.5 py-2 text-sm font-medium transition-colors',
                 pathname === link.href
-                  ? 'bg-indigo-50 text-indigo-700'
-                  : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                  ? 'bg-teal-50 text-teal-700'
+                  : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
               )}
             >
               {link.label}
@@ -56,8 +58,8 @@ export function Header() {
                 className={cn(
                   'rounded-lg px-3.5 py-2 text-sm font-medium transition-colors',
                   pathname === '/me'
-                    ? 'bg-indigo-50 text-indigo-700'
-                    : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                    ? 'bg-teal-50 text-teal-700'
+                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
                 )}
               >
                 마이페이지
@@ -68,8 +70,8 @@ export function Header() {
                   className={cn(
                     'rounded-lg px-3.5 py-2 text-sm font-medium transition-colors',
                     pathname.startsWith('/admin')
-                      ? 'bg-indigo-50 text-indigo-700'
-                      : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                      ? 'bg-teal-50 text-teal-700'
+                      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
                   )}
                 >
                   관리자
