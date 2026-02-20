@@ -1,4 +1,3 @@
-import { NextRequest } from 'next/server'
 import { z } from 'zod'
 import { supabase } from '@/lib/supabase'
 import { withAuth, AuthedRequest, successResponse, errorResponse } from '@/lib/auth'
@@ -12,7 +11,7 @@ const bodySchema = z.object({
  * POST /api/v1/users/me/charge
  * 프로토타입용 가상 충전. 실제 결제 없이 잔액만 증가시킵니다.
  */
-export const POST = withAuth(async (req: AuthedRequest, _ctx) => {
+export const POST = withAuth(async (req: AuthedRequest) => {
   const parsed = await parseBody(req, bodySchema)
   if (parsed.error) return parsed.error
 

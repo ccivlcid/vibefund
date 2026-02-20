@@ -1,9 +1,8 @@
-import { NextRequest } from 'next/server'
 import { supabase } from '@/lib/supabase'
-import { withAdmin, errorResponse, successResponse } from '@/lib/auth'
+import { withAdmin, AuthedRequest, errorResponse, successResponse } from '@/lib/auth'
 
 // GET /api/v1/admin/reports — 신고 접수 목록 (F-054)
-export const GET = withAdmin(async (req: NextRequest) => {
+export const GET = withAdmin(async (req: AuthedRequest) => {
   const { searchParams } = new URL(req.url)
   const status = searchParams.get('status') ?? 'pending'
 
@@ -24,9 +23,11 @@ export const GET = withAdmin(async (req: NextRequest) => {
   if (error) return errorResponse(500, 'INTERNAL_ERROR', '신고 목록 조회 실패')
 
   const projectIds = [...new Set(
-    (rows ?? [])
-      .map((r: { comment?: { project_id?: string } | null }) => r.comment?.project_id)
-      .filter(Boolean) as string[]
+    (rows ?? []).map((r: Record<string, unknown>) => {
+      const c = r.comment
+      const pid = Array.isArray(c) ? (c[0] as { project_id?: string })?.project_id : (c as { project_id?: string } | null)?.project_id
+      return pid
+    }).filter(Boolean) as string[]
   )]
   const projects: Record<string, { id: string; title: string }> = {}
   if (projectIds.length > 0) {
@@ -37,7 +38,8 @@ export const GET = withAdmin(async (req: NextRequest) => {
   }
 
   const list = (rows ?? []).map((r: Record<string, unknown>) => {
-    const comment = r.comment as { project_id?: string; body?: string; created_at?: string } | null
+    const raw = r.comment
+    const comment = (Array.isArray(raw) ? raw[0] : raw) as { project_id?: string; body?: string; created_at?: string } | null
     return {
       ...r,
       project_title: comment?.project_id ? projects[comment.project_id]?.title ?? null : null,

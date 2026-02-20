@@ -1,4 +1,3 @@
-import { NextRequest } from 'next/server'
 import { z } from 'zod'
 import { supabase } from '@/lib/supabase'
 import { withAuth, AuthedRequest, successResponse, errorResponse } from '@/lib/auth'

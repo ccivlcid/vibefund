@@ -2,6 +2,7 @@
 
 import { useState, useRef, FormEvent } from 'react'
 import Link from 'next/link'
+import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/auth-context'
 import { api } from '@/lib/api'
@@ -324,10 +325,13 @@ export default function NewProjectPage() {
                 {form.thumbnail_url && (
                   <div className="mt-2">
                     <p className="mb-1 text-xs text-slate-500">미리보기</p>
-                    <img
+                    <Image
                       src={form.thumbnail_url}
                       alt="썸네일 미리보기"
+                      width={200}
+                      height={96}
                       className="h-24 w-auto max-w-[200px] rounded-lg border border-slate-200 object-cover"
+                      unoptimized
                     />
                   </div>
                 )}

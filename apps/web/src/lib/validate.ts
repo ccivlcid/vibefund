@@ -1,5 +1,5 @@
 import { ZodSchema } from 'zod'
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { errorResponse } from './auth'
 
 /**
@@ -7,7 +7,7 @@ import { errorResponse } from './auth'
  * 실패 시 400 에러 응답을 반환합니다.
  */
 export async function parseBody<T>(
-  req: NextRequest,
+  req: Request,
   schema: ZodSchema<T>
 ): Promise<{ data: T; error: null } | { data: null; error: NextResponse }> {
   try {

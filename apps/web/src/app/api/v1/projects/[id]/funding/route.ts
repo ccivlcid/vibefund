@@ -136,9 +136,9 @@ export const PUT = withAuth(async (req: AuthedRequest, { params }) => {
     return errorResponse(403, 'FORBIDDEN', '펀딩 설정 권한이 없습니다.')
   }
 
-  const parsed = await parseBody<FundingPutBody>(req, fundingPutSchema)
+  const parsed = await parseBody(req, fundingPutSchema)
   if (parsed.error) return parsed.error
-  const body = parsed.data
+  const body = parsed.data as FundingPutBody
 
   const { data, error } = await supabase
     .from('fundings')

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { api } from '@/lib/api'
@@ -99,16 +99,16 @@ export default function ProjectViewPage() {
       .catch(() => {})
   }
 
-  const loadVerificationCounts = () => {
+  const loadVerificationCounts = useCallback(() => {
     if (!projectId) return
     api.get<{ data: { counts: { q1_use_intent: number; q2_monthly_pay: number; q3_improvement: number } } }>(
       `/projects/${projectId}/verification-responses`
     ).then((r) => setVerificationCounts(r.data.counts)).catch(() => {})
-  }
+  }, [projectId])
 
   useEffect(() => {
     if (projectId) loadVerificationCounts()
-  }, [projectId])
+  }, [projectId, loadVerificationCounts])
 
   const handleVerificationSubmit = async (e: React.FormEvent) => {
     e.preventDefault()

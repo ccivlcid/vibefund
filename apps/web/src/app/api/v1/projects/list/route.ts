@@ -1,4 +1,3 @@
-import { NextRequest } from 'next/server'
 import { z } from 'zod'
 import { supabase } from '@/lib/supabase'
 import { errorResponse, paginatedResponse } from '@/lib/auth'
@@ -16,7 +15,7 @@ const listSchema = z.object({
 const POOL_MAX = 100
 
 // POST /api/v1/projects/list — 프로젝트 목록 (body 기반)
-export async function POST(req: NextRequest) {
+export async function POST(req: Request) {
   const parsed = await parseBody(req, listSchema)
   if (parsed.error) return parsed.error
 
@@ -59,7 +58,7 @@ export async function POST(req: NextRequest) {
 
   if (error) return errorResponse(500, 'INTERNAL_ERROR', '프로젝트 목록 조회 실패')
 
-  let list = rows ?? []
+  const list = rows ?? []
   if (list.length === 0) return paginatedResponse([], { page, limit, total: useMemorySort ? 0 : (count ?? 0) })
 
   const projectIds = list.map((p: { id: string }) => p.id)
