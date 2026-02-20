@@ -1,4 +1,5 @@
 {
-  "buildCommand": "pnpm turbo run build --filter=@vibefund/web",
-  "installCommand": "pnpm install --frozen-lockfile"
+  "buildCommand": "pnpm turbo run build --filter=@vibefund/web --force",
+  "installCommand": "pnpm install --frozen-lockfile",
+  "outputDirectory": ".next"
 }
