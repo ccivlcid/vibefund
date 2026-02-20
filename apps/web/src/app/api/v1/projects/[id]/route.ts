@@ -29,7 +29,9 @@ async function getProjectWithProgress(id: string) {
     supabase.from('funding_progress').select('current_amount, progress_percent, days_left').eq('project_id', id).single(),
     supabase.from('pledges').select('id', { count: 'exact', head: true }).eq('project_id', id).eq('status', 'completed'),
   ])
-  const funding = project.funding as Record<string, unknown> | null
+  const rawFunding = project.funding as unknown
+  const fundingRow = Array.isArray(rawFunding) ? rawFunding[0] : rawFunding
+  const funding: Record<string, unknown> | null = fundingRow ? { ...(fundingRow as Record<string, unknown>) } : null
   if (funding && progressRes.data) {
     funding.current_amount = progressRes.data.current_amount ?? 0
     funding.progress_percent = progressRes.data.progress_percent ?? 0
@@ -50,7 +52,7 @@ async function getProjectWithProgress(id: string) {
     ...u,
     content: u.body,
   }))
-  return { ...project, comments, updates }
+  return { ...project, funding, comments, updates }
 }
 
 // GET /api/v1/projects/:id

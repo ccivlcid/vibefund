@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import { z } from 'zod'
 import { supabase } from '@/lib/supabase'
-import { successResponse, errorResponse, paginatedResponse } from '@/lib/auth'
+import { errorResponse, paginatedResponse } from '@/lib/auth'
 import { parseBody } from '@/lib/validate'
 
 const listSchema = z.object({
@@ -18,7 +18,10 @@ export async function POST(req: NextRequest) {
   const parsed = await parseBody(req, listSchema)
   if (parsed.error) return parsed.error
 
-  const { page, limit, category, status, sort, search } = parsed.data
+  const page = parsed.data.page ?? 1
+  const limit = parsed.data.limit ?? 20
+  const sort = parsed.data.sort ?? 'created_at'
+  const { category, status, search } = parsed.data
   const offset = (page - 1) * limit
 
   let query = supabase
@@ -39,8 +42,9 @@ export async function POST(req: NextRequest) {
 
   if (category) query = query.eq('category', category)
   if (status) query = query.eq('status', status)
-  if (search?.trim()) {
-    const term = `%${search.trim()}%`
+  const searchTrimmed = search?.trim()
+  if (searchTrimmed) {
+    const term = `%${searchTrimmed}%`
     query = query.or(`title.ilike.${term},short_description.ilike.${term}`)
   }
 
