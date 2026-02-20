@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Environment (never commit secrets)
+.env
+.env.local
+.env.*.local
+docs/02_기술정보/DB_연결_참고_비공개.md
+
+# Build / output
+.next/
+dist/
+out/
+.turbo/
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Logs
+*.log
+npm-debug.log*
