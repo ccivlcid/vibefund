@@ -56,8 +56,10 @@ export default function AdminProjectsPage() {
   const fetchProjects = useCallback(async () => {
     setLoading(true)
     try {
-      const params = new URLSearchParams({ limit: '100', ...(filter && { approval_status: filter }) })
-      const r = await api.get<{ data: AdminProject[] }>(`/admin/projects?${params}`)
+      const r = await api.post<{ data: AdminProject[] }>('/admin/projects', {
+        limit: 100,
+        ...(filter && { approval_status: filter }),
+      })
       setProjects(r.data)
     } finally {
       setLoading(false)

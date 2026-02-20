@@ -11,6 +11,8 @@ import { Card } from '@/components/ui/card'
 
 interface ProjectForm {
   title: string
+  short_description: string
+  service_url: string
   description: string
   thumbnail_url: string
   goal_amount: string
@@ -18,7 +20,13 @@ interface ProjectForm {
 }
 
 const INITIAL: ProjectForm = {
-  title: '', description: '', thumbnail_url: '', goal_amount: '', deadline: '',
+  title: '',
+  short_description: '',
+  service_url: '',
+  description: '',
+  thumbnail_url: '',
+  goal_amount: '',
+  deadline: '',
 }
 
 export default function NewProjectPage() {
@@ -42,10 +50,16 @@ export default function NewProjectPage() {
 
   const validate = (): boolean => {
     const errs: Partial<ProjectForm> = {}
-    if (!form.title.trim())       errs.title = '제목을 입력해 주세요'
-    if (!form.description.trim()) errs.description = '설명을 입력해 주세요'
+    if (!form.title.trim()) errs.title = '제목을 입력해 주세요'
+    if (!form.short_description.trim()) errs.short_description = '한 줄 소개를 입력해 주세요'
+    try {
+      if (!form.service_url.trim()) errs.service_url = '서비스 URL을 입력해 주세요'
+      else if (!new URL(form.service_url.trim()).href) errs.service_url = '유효한 URL을 입력해 주세요'
+    } catch {
+      errs.service_url = '유효한 URL을 입력해 주세요'
+    }
     if (!form.goal_amount || Number(form.goal_amount) < 1) errs.goal_amount = '목표 금액을 입력해 주세요'
-    if (!form.deadline)           errs.deadline = '마감일을 입력해 주세요'
+    if (!form.deadline) errs.deadline = '마감일을 입력해 주세요'
     setErrors(errs)
     return Object.keys(errs).length === 0
   }
@@ -58,9 +72,10 @@ export default function NewProjectPage() {
     try {
       const res = await api.post<{ data: { id: string } }>('/projects', {
         title: form.title.trim(),
-        description: form.description.trim(),
-        thumbnail_url: form.thumbnail_url.trim() || null,
-        status: 'draft',
+        short_description: form.short_description.trim(),
+        service_url: form.service_url.trim(),
+        description: form.description.trim() || undefined,
+        thumbnail_url: form.thumbnail_url.trim() || undefined,
       })
       const projectId = res.data.id
       await api.put(`/projects/${projectId}/funding`, {
@@ -93,6 +108,24 @@ export default function NewProjectPage() {
               onChange={set('title')}
               placeholder="프로젝트 이름을 입력하세요"
               error={errors.title}
+              required
+            />
+            <Input
+              label="한 줄 소개"
+              value={form.short_description}
+              onChange={set('short_description')}
+              placeholder="프로젝트를 한 줄로 소개해 주세요"
+              error={errors.short_description}
+              required
+            />
+            <Input
+              label="서비스 URL"
+              type="url"
+              value={form.service_url}
+              onChange={set('service_url')}
+              placeholder="https://your-service.vercel.app"
+              error={errors.service_url}
+              hint="체험할 웹사이트/SaaS 주소 (미리보기용)"
               required
             />
             <Textarea

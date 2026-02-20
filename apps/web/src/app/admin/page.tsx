@@ -48,7 +48,7 @@ export default function AdminDashboardPage() {
 
   useEffect(() => {
     if (!user || user.role !== 'admin') return
-    api.get<{ data: DashboardStats }>('/admin/dashboard')
+    api.post<{ data: DashboardStats }>('/admin/dashboard', {})
       .then((r) => setStats(r.data))
       .finally(() => setLoading(false))
   }, [user])

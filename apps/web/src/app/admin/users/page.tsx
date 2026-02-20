@@ -31,7 +31,7 @@ export default function AdminUsersPage() {
 
   useEffect(() => {
     if (!me || me.role !== 'admin') return
-    api.get<{ data: AdminUser[] }>('/admin/users?limit=100')
+    api.post<{ data: AdminUser[] }>('/admin/users', { limit: 100 })
       .then((r) => setUsers(r.data))
       .finally(() => setLoading(false))
   }, [me])

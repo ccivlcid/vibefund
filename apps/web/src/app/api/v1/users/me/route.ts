@@ -3,16 +3,27 @@ import { supabase } from '@/lib/supabase'
 import { withAuth, AuthedRequest, successResponse, errorResponse } from '@/lib/auth'
 import { parseBody } from '@/lib/validate'
 
-// GET /api/v1/users/me
-export const GET = withAuth(async (req: AuthedRequest) => {
+async function getMe(req: AuthedRequest) {
   const { data, error } = await supabase
     .from('users')
     .select('id, email, name, avatar_url, bio, provider, role, created_at, updated_at')
     .eq('id', req.user.sub)
     .single()
+  if (error || !data) return null
+  return data
+}
 
-  if (error || !data) return errorResponse(404, 'NOT_FOUND', '사용자를 찾을 수 없습니다.')
+// GET /api/v1/users/me
+export const GET = withAuth(async (req: AuthedRequest) => {
+  const data = await getMe(req)
+  if (!data) return errorResponse(404, 'NOT_FOUND', '사용자를 찾을 수 없습니다.')
+  return successResponse(data)
+})
 
+// POST /api/v1/users/me — 내 정보 조회 (body 없음)
+export const POST = withAuth(async (req: AuthedRequest) => {
+  const data = await getMe(req)
+  if (!data) return errorResponse(404, 'NOT_FOUND', '사용자를 찾을 수 없습니다.')
   return successResponse(data)
 })
 

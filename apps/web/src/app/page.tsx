@@ -48,14 +48,13 @@ export default function HomePage() {
   const fetchProjects = useCallback(async (p: number) => {
     setLoading(true)
     try {
-      const params = new URLSearchParams({
-        page: String(p),
-        limit: String(LIMIT),
-        sort,
+      const res = await api.post<PaginatedResponse>('/projects/list', {
+        page: p,
+        limit: LIMIT,
+        sort: sort as 'created_at' | 'deadline',
         ...(status && { status }),
-        ...(query  && { search: query }),
+        ...(query && { search: query }),
       })
-      const res = await api.get<PaginatedResponse>(`/projects?${params}`)
       setProjects(res.data)
       setTotal(res.meta.total)
       setPage(p)

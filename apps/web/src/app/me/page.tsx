@@ -21,7 +21,7 @@ interface MyProject {
 interface MyPledge {
   id: string; amount: number; status: string; created_at: string
   project: { id: string; title: string }
-  reward: { title: string } | null
+  reward: { id?: string; name?: string } | null
 }
 
 interface MyComment {
@@ -66,13 +66,13 @@ export default function MyPage() {
     setDataLoading(true)
     try {
       if (t === 'projects') {
-        const r = await api.get<{ data: MyProject[] }>('/users/me/projects?limit=50')
+        const r = await api.post<{ data: MyProject[] }>('/users/me/projects', { limit: 50 })
         setProjects(r.data)
       } else if (t === 'pledges') {
-        const r = await api.get<{ data: MyPledge[] }>('/users/me/pledges?limit=50')
+        const r = await api.post<{ data: MyPledge[] }>('/users/me/pledges', { limit: 50 })
         setPledges(r.data)
       } else if (t === 'comments') {
-        const r = await api.get<{ data: MyComment[] }>('/users/me/comments?limit=50')
+        const r = await api.post<{ data: MyComment[] }>('/users/me/comments', { limit: 50 })
         setComments(r.data)
       }
     } finally {
@@ -189,7 +189,9 @@ export default function MyPage() {
                         {pl.project.title}
                       </p>
                     </Link>
-                    {pl.reward && <p className="text-xs text-gray-400 mt-0.5">리워드: {pl.reward.title}</p>}
+                    {pl.reward && (pl.reward.name ?? (pl.reward as { title?: string }).title) && (
+                      <p className="text-xs text-gray-400 mt-0.5">리워드: {pl.reward.name ?? (pl.reward as { title?: string }).title}</p>
+                    )}
                     <p className="text-xs text-gray-400 mt-0.5">{formatDate(pl.created_at)}</p>
                   </div>
                   <div className="flex flex-shrink-0 items-center gap-2">

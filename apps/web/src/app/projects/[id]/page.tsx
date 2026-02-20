@@ -21,8 +21,8 @@ interface Comment { id: string; content: string; created_at: string; user: { nam
 interface Update { id: string; title: string; content: string; created_at: string }
 interface Funding { goal_amount: number; current_amount: number; deadline: string; backer_count: number; progress_percent: number }
 interface Project {
-  id: string; title: string; description: string; status: string; approval_status: string
-  thumbnail_url: string | null; created_at: string; user_id: string
+  id: string; title: string; short_description?: string; description: string; status: string; approval_status: string
+  thumbnail_url: string | null; service_url: string | null; created_at: string; user_id: string
   user: { name: string }
   funding: Funding | null
   rewards: Reward[]
@@ -47,7 +47,7 @@ export default function ProjectDetailPage() {
   const [commenting, setCommenting]   = useState(false)
 
   useEffect(() => {
-    api.get<{ data: Project }>(`/projects/${id}`)
+    api.post<{ data: Project }>(`/projects/${id}`, {})
       .then((r) => setProject(r.data))
       .catch(() => router.replace('/'))
       .finally(() => setLoading(false))
@@ -64,7 +64,7 @@ export default function ProjectDetailPage() {
         amount,
       })
       setPledgeOpen(false)
-      const r = await api.get<{ data: Project }>(`/projects/${id}`)
+      const r = await api.post<{ data: Project }>(`/projects/${id}`, {})
       setProject(r.data)
     } catch (e: unknown) {
       const err = e as { message?: string }
@@ -82,7 +82,7 @@ export default function ProjectDetailPage() {
     try {
       await api.post(`/projects/${id}/comments`, { content: commentText })
       setComment('')
-      const r = await api.get<{ data: Project }>(`/projects/${id}`)
+      const r = await api.post<{ data: Project }>(`/projects/${id}`, {})
       setProject(r.data)
     } finally {
       setCommenting(false)
@@ -92,6 +92,9 @@ export default function ProjectDetailPage() {
   if (loading) return <PageSpinner />
   if (!project) return null
 
+  const updates = project.updates ?? []
+  const comments = project.comments ?? []
+  const rewards = project.rewards ?? []
   const f = project.funding
   const pct = f ? (f.progress_percent ?? progressPercent(f.current_amount, f.goal_amount)) : 0
   const days = f ? daysLeft(f.deadline) : null
@@ -100,8 +103,8 @@ export default function ProjectDetailPage() {
 
   const tabs = [
     { key: 'info',     label: '프로젝트 소개' },
-    { key: 'updates',  label: `업데이트 ${project.updates.length}` },
-    { key: 'comments', label: `댓글 ${project.comments.length}` },
+    { key: 'updates',  label: `업데이트 ${updates.length}` },
+    { key: 'comments', label: `댓글 ${comments.length}` },
   ] as const
 
   return (
@@ -109,6 +112,21 @@ export default function ProjectDetailPage() {
       <div className="grid grid-cols-1 gap-10 lg:grid-cols-3">
         {/* Left: main content */}
         <div className="lg:col-span-2 space-y-8">
+          {/* 웹사이트 미리보기 (iframe) — PRD: 실제 서비스 체험 */}
+          {project.service_url ? (
+            <div className="space-y-2">
+              <h3 className="text-sm font-semibold text-gray-700">서비스 체험</h3>
+              <div className="relative h-[420px] w-full overflow-hidden rounded-lg border border-gray-200 bg-white">
+                <iframe
+                  src={project.service_url}
+                  title={`${project.title} 미리보기`}
+                  className="absolute inset-0 h-full w-full border-0"
+                  sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+                  referrerPolicy="no-referrer"
+                />
+              </div>
+            </div>
+          ) : null}
           {/* Thumbnail */}
           <div className="relative h-72 w-full overflow-hidden rounded-lg bg-gray-100">
             {project.thumbnail_url ? (
@@ -129,6 +147,9 @@ export default function ProjectDetailPage() {
               )}
             </div>
             <h1 className="text-2xl font-bold text-gray-900">{project.title}</h1>
+            {project.short_description && (
+              <p className="mt-1 text-gray-600">{project.short_description}</p>
+            )}
             <div className="mt-2 flex items-center gap-3 text-sm text-gray-400">
               <span>by <span className="font-medium text-gray-600">{project.user?.name}</span></span>
               <span>&middot;</span>
@@ -169,9 +190,9 @@ export default function ProjectDetailPage() {
 
           {tab === 'updates' && (
             <div className="space-y-4">
-              {project.updates.length === 0 ? (
+              {updates.length === 0 ? (
                 <p className="text-sm text-gray-400">업데이트가 없습니다.</p>
-              ) : project.updates.map((u) => (
+              ) : updates.map((u) => (
                 <Card key={u.id} padding="md">
                   <p className="text-xs text-gray-400 mb-1">{formatDate(u.created_at)}</p>
                   <h4 className="font-semibold text-gray-900 mb-1">{u.title}</h4>
@@ -195,9 +216,9 @@ export default function ProjectDetailPage() {
                   등록
                 </Button>
               </form>
-              {project.comments.length === 0 ? (
+              {comments.length === 0 ? (
                 <p className="text-sm text-gray-400">댓글이 없습니다.</p>
-              ) : project.comments.map((c) => (
+              ) : comments.map((c) => (
                 <div key={c.id} className="flex gap-3 border-b border-gray-100 pb-3">
                   <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-gray-100 text-xs font-medium text-gray-600">
                     {c.user?.name?.[0] ?? 'U'}
@@ -247,10 +268,10 @@ export default function ProjectDetailPage() {
           </Card>
 
           {/* Rewards */}
-          {project.rewards.length > 0 && (
+          {rewards.length > 0 && (
             <div className="space-y-3">
               <h3 className="text-sm font-semibold text-gray-900">리워드</h3>
-              {project.rewards.map((r) => (
+              {rewards.map((r) => (
                 <button
                   key={r.id}
                   type="button"

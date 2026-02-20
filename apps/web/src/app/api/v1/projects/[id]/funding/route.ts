@@ -19,7 +19,59 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<Recor
   return successResponse(data)
 }
 
-// PUT /api/v1/projects/:id/funding
+const pledgeSchema = z.object({
+  reward_id: z.string().uuid().nullable().optional(),
+  amount: z.number().int().min(1000, '최소 1,000원 이상 후원 가능합니다.'),
+})
+
+// POST /api/v1/projects/:id/funding — 후원하기 (pledge 생성)
+export const POST = withAuth(async (req: AuthedRequest, { params }) => {
+  const { id: projectId } = await params
+
+  const { data: project } = await supabase
+    .from('projects')
+    .select('id, user_id')
+    .eq('id', projectId)
+    .is('deleted_at', null)
+    .single()
+
+  if (!project) return errorResponse(404, 'PROJECT_NOT_FOUND', '프로젝트를 찾을 수 없습니다.')
+  if (project.user_id === req.user.sub) {
+    return errorResponse(400, 'OWN_PROJECT', '자신의 프로젝트에는 후원할 수 없습니다.')
+  }
+
+  const parsed = await parseBody(req, pledgeSchema)
+  if (parsed.error) return parsed.error
+
+  const { data: funding } = await supabase
+    .from('fundings')
+    .select('id, min_pledge_amount')
+    .eq('project_id', projectId)
+    .single()
+
+  if (!funding) return errorResponse(404, 'NOT_FOUND', '펀딩 정보가 없습니다.')
+  if (parsed.data.amount < (funding.min_pledge_amount ?? 0)) {
+    return errorResponse(400, 'MIN_AMOUNT', `최소 ${funding.min_pledge_amount ?? 0}원 이상 후원해 주세요.`)
+  }
+
+  const { data: pledge, error } = await supabase
+    .from('pledges')
+    .insert({
+      project_id: projectId,
+      user_id: req.user.sub,
+      reward_id: parsed.data.reward_id ?? null,
+      amount: parsed.data.amount,
+      status: 'completed', // MVP: 결제 없이 완료 처리
+    })
+    .select('id, amount, status, created_at')
+    .single()
+
+  if (error || !pledge) return errorResponse(500, 'INTERNAL_ERROR', '후원 처리에 실패했습니다.')
+
+  return successResponse(pledge, 201)
+})
+
+// PUT /api/v1/projects/:id/funding — 펀딩 목표/마감일 설정 (소유자)
 export const PUT = withAuth(async (req: AuthedRequest, { params }) => {
   const { id: projectId } = await params
 

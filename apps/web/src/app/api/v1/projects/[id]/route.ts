@@ -14,19 +14,58 @@ const PROJECT_SELECT = `
   rewards (id, name, description, amount, type)
 `
 
-// GET /api/v1/projects/:id
-export async function GET(_req: NextRequest, { params }: { params: Promise<Record<string, string>> }) {
-  const { id } = await params
-
-  const { data, error } = await supabase
+async function getProjectWithProgress(id: string) {
+  const { data: project, error } = await supabase
     .from('projects')
     .select(PROJECT_SELECT)
     .eq('id', id)
     .is('deleted_at', null)
     .single()
 
-  if (error || !data) return errorResponse(404, 'PROJECT_NOT_FOUND', '프로젝트를 찾을 수 없습니다.')
+  if (error || !project) return null
 
+  // 진행률·후원자 수 반영
+  const [progressRes, countRes] = await Promise.all([
+    supabase.from('funding_progress').select('current_amount, progress_percent, days_left').eq('project_id', id).single(),
+    supabase.from('pledges').select('id', { count: 'exact', head: true }).eq('project_id', id).eq('status', 'completed'),
+  ])
+  const funding = project.funding as Record<string, unknown> | null
+  if (funding && progressRes.data) {
+    funding.current_amount = progressRes.data.current_amount ?? 0
+    funding.progress_percent = progressRes.data.progress_percent ?? 0
+    funding.days_left = progressRes.data.days_left ?? 0
+  }
+  if (funding) funding.backer_count = countRes.count ?? 0
+
+  // comments, updates 별도 조회 (프로젝트 상세용)
+  const [commentsRes, updatesRes] = await Promise.all([
+    supabase.from('comments').select('id, body, created_at, user:users!user_id (id, name, avatar_url)').eq('project_id', id).order('created_at', { ascending: false }).limit(50),
+    supabase.from('updates').select('id, title, body, created_at').eq('project_id', id).order('created_at', { ascending: false }).limit(20),
+  ])
+  const comments = (commentsRes.data ?? []).map((c: { body: string; [k: string]: unknown }) => ({
+    ...c,
+    content: c.body,
+  }))
+  const updates = (updatesRes.data ?? []).map((u: { body: string; [k: string]: unknown }) => ({
+    ...u,
+    content: u.body,
+  }))
+  return { ...project, comments, updates }
+}
+
+// GET /api/v1/projects/:id
+export async function GET(_req: NextRequest, { params }: { params: Promise<Record<string, string>> }) {
+  const { id } = await params
+  const data = await getProjectWithProgress(id)
+  if (!data) return errorResponse(404, 'PROJECT_NOT_FOUND', '프로젝트를 찾을 수 없습니다.')
+  return successResponse(data)
+}
+
+// POST /api/v1/projects/:id — 상세 조회 (body 없음, POST 방식)
+export async function POST(_req: NextRequest, { params }: { params: Promise<Record<string, string>> }) {
+  const { id } = await params
+  const data = await getProjectWithProgress(id)
+  if (!data) return errorResponse(404, 'PROJECT_NOT_FOUND', '프로젝트를 찾을 수 없습니다.')
   return successResponse(data)
 }
 
