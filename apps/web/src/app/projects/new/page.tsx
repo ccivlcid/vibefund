@@ -82,7 +82,8 @@ export default function NewProjectPage() {
         goal_amount: Number(form.goal_amount),
         deadline: new Date(form.deadline).toISOString(),
       })
-      router.push(`/projects/${projectId}`)
+      sessionStorage.setItem('vibefund_view_project_id', projectId)
+      router.push('/projects/view')
     } catch (err: unknown) {
       const e = err as { message?: string }
       setApiError(e?.message ?? '프로젝트 생성 실패')

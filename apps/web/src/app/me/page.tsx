@@ -153,8 +153,15 @@ export default function MyPage() {
           ) : projects.map((p) => {
             const ab = APPROVAL_BADGE[p.approval_status] ?? { label: p.approval_status, variant: 'muted' as const }
             return (
-              <Link key={p.id} href={`/projects/${p.id}`}>
-                <Card padding="md" className="transition-shadow hover:shadow-sm">
+              <Card
+                key={p.id}
+                padding="md"
+                className="transition-shadow hover:shadow-sm cursor-pointer"
+                onClick={() => {
+                  sessionStorage.setItem('vibefund_view_project_id', p.id)
+                  router.push('/projects/view')
+                }}
+              >
                   <div className="flex items-center justify-between gap-4">
                     <div className="min-w-0">
                       <p className="truncate text-sm font-semibold text-gray-900">{p.title}</p>
@@ -168,7 +175,6 @@ export default function MyPage() {
                     </div>
                   </div>
                 </Card>
-              </Link>
             )
           })}
         </div>
@@ -184,11 +190,16 @@ export default function MyPage() {
               <Card key={pl.id} padding="md">
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0">
-                    <Link href={`/projects/${pl.project.id}`}>
-                      <p className="truncate text-sm font-semibold text-gray-900 hover:underline">
-                        {pl.project.title}
-                      </p>
-                    </Link>
+                    <button
+                      type="button"
+                      className="truncate text-sm font-semibold text-gray-900 hover:underline text-left"
+                      onClick={() => {
+                        sessionStorage.setItem('vibefund_view_project_id', pl.project.id)
+                        router.push('/projects/view')
+                      }}
+                    >
+                      {pl.project.title}
+                    </button>
                     {pl.reward && (pl.reward.name ?? (pl.reward as { title?: string }).title) && (
                       <p className="text-xs text-gray-400 mt-0.5">리워드: {pl.reward.name ?? (pl.reward as { title?: string }).title}</p>
                     )}
@@ -211,11 +222,16 @@ export default function MyPage() {
             </div>
           ) : comments.map((c) => (
             <Card key={c.id} padding="md">
-              <Link href={`/projects/${c.project.id}`}>
-                <p className="mb-1 text-xs font-medium text-gray-400 hover:text-gray-700 hover:underline">
-                  {c.project.title}
-                </p>
-              </Link>
+              <button
+                type="button"
+                className="mb-1 text-xs font-medium text-gray-400 hover:text-gray-700 hover:underline text-left"
+                onClick={() => {
+                  sessionStorage.setItem('vibefund_view_project_id', c.project.id)
+                  router.push('/projects/view')
+                }}
+              >
+                {c.project.title}
+              </button>
               <p className="text-sm text-gray-700">{c.content}</p>
               <p className="mt-1 text-xs text-gray-400">{formatDate(c.created_at)}</p>
             </Card>

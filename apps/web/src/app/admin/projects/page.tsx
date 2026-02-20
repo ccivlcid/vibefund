@@ -141,9 +141,16 @@ export default function AdminProjectsPage() {
                 return (
                   <tr key={p.id} className="hover:bg-gray-50">
                     <td className="px-4 py-3">
-                      <Link href={`/projects/${p.id}`} className="font-medium text-gray-900 hover:underline">
+                      <button
+                        type="button"
+                        className="font-medium text-gray-900 hover:underline text-left"
+                        onClick={() => {
+                          sessionStorage.setItem('vibefund_view_project_id', p.id)
+                          router.push('/projects/view')
+                        }}
+                      >
                         {truncate(p.title, 40)}
-                      </Link>
+                      </button>
                       {p.rejection_reason && (
                         <p className="mt-0.5 text-xs text-red-500 line-clamp-1">반려: {p.rejection_reason}</p>
                       )}

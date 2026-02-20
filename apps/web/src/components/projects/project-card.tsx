@@ -1,5 +1,7 @@
-import Link from 'next/link'
+'use client'
+
 import Image from 'next/image'
+import { useRouter } from 'next/navigation'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { formatCurrency, daysLeft, progressPercent, truncate } from '@/lib/utils'
@@ -29,7 +31,10 @@ function getStatusBadge(status: string) {
   return map[status] ?? { label: status, variant: 'muted' }
 }
 
+const VIEW_PROJECT_ID_KEY = 'vibefund_view_project_id'
+
 export function ProjectCard({ id, title, thumbnail_url, status, funding }: ProjectCardProps) {
+  const router = useRouter()
   const f = Array.isArray(funding) ? funding[0] : funding
   const goal = f?.goal_amount ?? 0
   const current = f?.current_amount ?? 0
@@ -37,8 +42,13 @@ export function ProjectCard({ id, title, thumbnail_url, status, funding }: Proje
   const days = f?.deadline ? daysLeft(f.deadline) : null
   const badge = getStatusBadge(status)
 
+  const goToView = () => {
+    sessionStorage.setItem(VIEW_PROJECT_ID_KEY, id)
+    router.push('/projects/view')
+  }
+
   return (
-    <Link href={`/projects/${id}`} className="group block">
+    <button type="button" onClick={goToView} className="group block w-full text-left">
       <article className="rounded-lg border border-gray-200 bg-white transition-shadow hover:shadow-md overflow-hidden">
         <div className="relative h-44 w-full bg-gray-100">
           {thumbnail_url ? (
@@ -84,6 +94,6 @@ export function ProjectCard({ id, title, thumbnail_url, status, funding }: Proje
           )}
         </div>
       </article>
-    </Link>
+    </button>
   )
 }
