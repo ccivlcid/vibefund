@@ -1,5 +1,5 @@
 {
-  "buildCommand": "pnpm turbo run build --filter=@vibefund/web --force",
+  "buildCommand": "next build",
   "installCommand": "pnpm install --frozen-lockfile",
-  "outputDirectory": ".next"
+  "framework": "nextjs"
 }
