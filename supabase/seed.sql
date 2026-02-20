@@ -119,3 +119,86 @@ INSERT INTO updates (id, project_id, user_id, title, body)
 VALUES
   ('f0000001-0001-4000-8000-000000000001', 'b0000001-0001-4000-8000-000000000001', 'a0000002-0002-4000-8000-000000000002', '첫 업데이트', '많은 관심 감사합니다. 다음 주에 베타 테스트 링크를 공유할 예정입니다.')
 ON CONFLICT (id) DO NOTHING;
+
+-- ── 8. AI 이사회 샘플 데이터 ─────────────────────────────────────
+-- (ai_board_members는 마이그레이션 005에서 7인 시드됨. 여기서는 프로젝트별 선택·심사 결과만 추가.)
+
+-- 8.1 프로젝트별 위원 선택 (샘플 프로젝트 1,2,3에 버핏·잡스·Karpathy 3인 포함)
+INSERT INTO project_ai_board_selections (project_id, ai_board_member_id)
+SELECT p.id, m.id
+FROM (VALUES
+  ('b0000001-0001-4000-8000-000000000001'::uuid),
+  ('b0000002-0002-4000-8000-000000000002'::uuid),
+  ('b0000003-0003-4000-8000-000000000003'::uuid)
+) AS p(id),
+LATERAL (SELECT id FROM ai_board_members WHERE key IN ('buffett','jobs','karpathy')) AS m(id)
+ON CONFLICT (project_id, ai_board_member_id) DO NOTHING;
+
+-- 8.2 AI 이사회 심사 결과 (프로젝트당 1건) — UUID는 16진수(0-9,a-f)만 허용
+INSERT INTO ai_board_reports (id, project_id, overall_score, grade, strengths, risks, improvements)
+VALUES
+  ('a1000001-0001-4000-8000-000000000001', 'b0000001-0001-4000-8000-000000000001', 7.4, 'B',
+   '["명확한 타겟(팀 일정)", "실제 사용자 테스트 완료"]'::jsonb,
+   '["경쟁 서비스 대비 차별화 보강 필요"]'::jsonb,
+   '["한 줄 소개에 사용 시나리오 추가"]'::jsonb),
+  ('a1000002-0002-4000-8000-000000000002', 'b0000002-0002-4000-8000-000000000002', 6.8, 'B',
+   '["B2B 니즈 명확", "MVP 구축 완료"]'::jsonb,
+   '["초기 CAC 검증 필요", "가격 전략 정교화"]'::jsonb,
+   '["타겟 페르소나 1~2종으로 구체화"]'::jsonb),
+  ('a1000003-0003-4000-8000-000000000003', 'b0000003-0003-4000-8000-000000000003', 8.1, 'A',
+   '["단순한 가치 제안", "템플릿 확장성", "명확한 수익 모델"]'::jsonb,
+   '[]'::jsonb,
+   '["실제 사용 후기 추가 시 신뢰도 상승"]'::jsonb)
+ON CONFLICT (id) DO NOTHING;
+
+-- 8.3 멤버별 점수·피드백 (심사별 버핏·잡스·Karpathy 3인)
+INSERT INTO ai_board_report_scores (ai_board_report_id, ai_board_member_id, score, feedback)
+SELECT r.id, m.id, s.score, s.feedback
+FROM (VALUES
+  ('a1000001-0001-4000-8000-000000000001'::uuid, 'buffett',  7.2, '수익 모델이 명확해 보입니다. 팀 도구는 구독 전환이 잘 됩니다.'),
+  ('a1000001-0001-4000-8000-000000000001'::uuid, 'jobs',     7.8, '비전이 잘 드러납니다. 사용 시나리오를 한 문장으로 더 날카롭게.'),
+  ('a1000001-0001-4000-8000-000000000001'::uuid, 'karpathy', 7.2, '노코드로 구현된 점이 현실적입니다. 스케일 시 기술 부채 검토 권장.'),
+  ('a1000002-0002-4000-8000-000000000002'::uuid, 'buffett',  6.5, '프리랜서·소호 타겟이 이해 가능합니다. LTV 가정을 짧게 보강해 보세요.'),
+  ('a1000002-0002-4000-8000-000000000002'::uuid, 'jobs',     7.0, '차별화 포인트가 있습니다. 경쟁 대비 한 줄 포지셔닝을 정리하면 좋겠어요.'),
+  ('a1000002-0002-4000-8000-000000000002'::uuid, 'karpathy', 6.8, 'Bubble MVP가 적절해 보입니다. 보안·데이터 이전 정책을 명시하세요.'),
+  ('a1000003-0003-4000-8000-000000000003'::uuid, 'buffett',  8.0, '템플릿 판매는 단순하고 이해하기 쉬운 비즈니스입니다.'),
+  ('a1000003-0003-4000-8000-000000000003'::uuid, 'jobs',     8.2, '미니멀 블로그 컨셉이 명확합니다. 타겟 감성에 맞는 스토리가 돋보여요.'),
+  ('a1000003-0003-4000-8000-000000000003'::uuid, 'karpathy', 8.0, 'Framer 템플릿 구조가 잘 잡혀 있습니다. 커스터마이징 가이드가 있으면 좋겠어요.')
+) AS s(report_id, member_key, score, feedback),
+ai_board_reports r,
+ai_board_members m
+WHERE r.id = s.report_id AND m.key = s.member_key
+ON CONFLICT (ai_board_report_id, ai_board_member_id) DO NOTHING;
+
+-- ── 9. Community 게시판 샘플 글 ───────────────────────────────────
+INSERT INTO community_posts (id, board, user_id, title, body)
+VALUES
+  (
+    'b0000001-0001-4000-8000-000000000001',
+    'discussion',
+    'a0000002-0002-4000-8000-000000000002',
+    '1인 빌더로 첫 SaaS 런칭 후기',
+    '노코드로 MVP를 만들고 배포까지 해봤습니다. Bubble으로 프로토타입 만들고, 결제는 Stripe 연동했어요. 질문 있으시면 댓글로 남겨 주세요.'
+  ),
+  (
+    'b0000002-0002-4000-8000-000000000002',
+    'discussion',
+    'a0000003-0003-4000-8000-000000000003',
+    'AI 도구로 아이디어 검증하는 방법',
+    '아이디어 단계에서 ChatGPT/Claude로 타겟 페르소나 인터뷰 시나리오를 만들어 보는 걸 추천합니다. 저도 이렇게 해서 방향을 많이 좁혔어요.'
+  ),
+  (
+    'b0000003-0003-4000-8000-000000000003',
+    'learning',
+    'a0000002-0002-4000-8000-000000000002',
+    'Pre-Seed 단계에서 꼭 정리해 둘 문서',
+    '팀 소개, 문제/솔루션, 타겟, 경쟁 분석, 트랙션, 재무 가정, 투자 활용 계획 정도를 한 페이지에 정리해 두면 이사회나 멘토링 때 유용합니다.'
+  )
+ON CONFLICT (id) DO NOTHING;
+
+-- ── 10. Community 채팅방 ───────────────────────────────────────────
+INSERT INTO chat_rooms (id, key, name)
+VALUES
+  ('c0000001-0001-4000-8000-000000000001', 'discussion', '자유 토론 채팅방'),
+  ('c0000002-0002-4000-8000-000000000002', 'learning', '창업 학습 채팅방')
+ON CONFLICT (key) DO NOTHING;

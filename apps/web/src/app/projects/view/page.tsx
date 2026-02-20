@@ -16,6 +16,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Select } from '@/components/ui/select'
 
 import { formatCurrency, formatDate, daysLeft, progressPercent } from '@/lib/utils'
+import { AiBoardReportView } from '@/components/ai-board/ai-board-report-view'
 
 const REWARD_TYPE_OPTIONS = [
   { value: 'beta', label: '얼리버드 / 베타' },
@@ -28,6 +29,133 @@ const VIEW_PROJECT_ID_KEY = 'vibefund_view_project_id'
 
 interface Reward { id: string; name?: string; title?: string; description: string; amount: number; type: string }
 interface Comment { id: string; content: string; parent_id?: string | null; created_at: string; user: { name: string } }
+interface CommentTreeItem { comment: Comment; children: CommentTreeItem[] }
+function buildCommentTree(comments: Comment[]): CommentTreeItem[] {
+  const byParent = new Map<string | null, Comment[]>()
+  for (const c of comments) {
+    const key = c.parent_id ?? null
+    if (!byParent.has(key)) byParent.set(key, [])
+    byParent.get(key)!.push(c)
+  }
+  function build(parentKey: string | null): CommentTreeItem[] {
+    const list = byParent.get(parentKey) ?? []
+    return list.map((comment) => ({ comment, children: build(comment.id) }))
+  }
+  return build(null)
+}
+
+function CommentBlock({
+  item,
+  depth,
+  replyToId,
+  setReplyToId,
+  replyText,
+  setReplyText,
+  handleReply,
+  user,
+  commenting,
+  formatDate,
+  setReportingId,
+  setReportReason,
+}: {
+  item: CommentTreeItem
+  depth: number
+  replyToId: string | null
+  setReplyToId: (id: string | null) => void
+  replyText: string
+  setReplyText: (s: string) => void
+  handleReply: (e: React.FormEvent) => void
+  user: { name?: string } | null
+  commenting: boolean
+  formatDate: (s: string) => string
+  setReportingId: (id: string | null) => void
+  setReportReason: (s: string) => void
+}) {
+  const { comment, children } = item
+  const isReply = depth > 0
+  return (
+    <li className={isReply ? 'mt-2' : 'border-b border-slate-100 pb-4 last:border-0'}>
+      <div className={`flex gap-2 ${isReply ? 'gap-2' : 'gap-3'}`}>
+        <div
+          className={`flex flex-shrink-0 items-center justify-center rounded-full text-sm font-medium ${
+            isReply ? 'h-7 w-7 bg-slate-100 text-slate-600 text-xs' : 'h-9 w-9 bg-teal-100 text-teal-700'
+          }`}
+        >
+          {comment.user?.name?.[0] ?? 'U'}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className={isReply ? 'text-xs font-medium text-slate-800' : 'text-sm font-semibold text-slate-900'}>
+              {comment.user?.name}
+            </span>
+            <span className="text-xs text-slate-400">{formatDate(comment.created_at)}</span>
+            {user && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setReplyToId(replyToId === comment.id ? null : comment.id)}
+                  className="text-xs text-teal-600 hover:underline"
+                >
+                  답글
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setReportingId(comment.id)
+                    setReportReason('')
+                  }}
+                  className="text-xs text-slate-400 hover:text-red-600"
+                >
+                  신고
+                </button>
+              </>
+            )}
+          </div>
+          <p className={`mt-0.5 whitespace-pre-wrap ${isReply ? 'text-sm text-slate-600' : 'text-sm text-slate-700'}`}>
+            {comment.content}
+          </p>
+          {replyToId === comment.id && (
+            <form onSubmit={handleReply} className="mt-3 flex gap-2">
+              <Input
+                value={replyText}
+                onChange={(e) => setReplyText(e.target.value)}
+                placeholder="답글 입력..."
+                className="flex-1"
+              />
+              <Button type="submit" size="sm" disabled={commenting || !replyText.trim()}>
+                등록
+              </Button>
+              <Button type="button" variant="ghost" size="sm" onClick={() => { setReplyToId(null); setReplyText('') }}>
+                취소
+              </Button>
+            </form>
+          )}
+          {children.length > 0 && (
+            <ul className="mt-3 ml-4 space-y-2 border-l-2 border-teal-100 pl-4">
+              {children.map((childItem) => (
+                <CommentBlock
+                  key={childItem.comment.id}
+                  item={childItem}
+                  depth={depth + 1}
+                  replyToId={replyToId}
+                  setReplyToId={setReplyToId}
+                  replyText={replyText}
+                  setReplyText={setReplyText}
+                  handleReply={handleReply}
+                  user={user}
+                  commenting={commenting}
+                  formatDate={formatDate}
+                  setReportingId={setReportingId}
+                  setReportReason={setReportReason}
+                />
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+    </li>
+  )
+}
 interface Update { id: string; title: string; content: string; created_at: string }
 interface Funding { goal_amount: number; current_amount: number; deadline: string; backer_count: number; progress_percent: number }
 interface Project {
@@ -42,6 +170,8 @@ interface Project {
   verification_count?: number
   last_update_at?: string
   feedback_preference?: 'validation_focus' | 'comments_focus' | 'both' | null
+  vote_up_count?: number
+  vote_down_count?: number
 }
 
 export default function ProjectViewPage() {
@@ -51,7 +181,7 @@ export default function ProjectViewPage() {
   const [projectId, setProjectId] = useState<string | null>(null)
   const [project, setProject] = useState<Project | null>(null)
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState<'overview' | 'demo' | 'validation' | 'updates' | 'comments'>('overview')
+  const [tab, setTab] = useState<'overview' | 'demo' | 'validation' | 'updates' | 'comments' | 'ai_board'>('overview')
   const [pledgeOpen, setPledgeOpen] = useState(false)
   const [selectedReward, setReward] = useState<Reward | null>(null)
   const [pledgeAmt, setPledgeAmt] = useState('')
@@ -78,6 +208,10 @@ export default function ProjectViewPage() {
   const [reportingId, setReportingId] = useState<string | null>(null)
   const [reportReason, setReportReason] = useState('')
   const [reportSubmitting, setReportSubmitting] = useState(false)
+  const [voteUp, setVoteUp] = useState(0)
+  const [voteDown, setVoteDown] = useState(0)
+  const [myVote, setMyVote] = useState<'up' | 'down' | null>(null)
+  const [voteSubmitting, setVoteSubmitting] = useState(false)
 
   useEffect(() => {
     const id = typeof window !== 'undefined' ? sessionStorage.getItem(VIEW_PROJECT_ID_KEY) : null
@@ -87,7 +221,12 @@ export default function ProjectViewPage() {
     }
     setProjectId(id)
     api.post<{ data: Project }>('/project-detail', { id })
-      .then((r) => setProject(r.data))
+      .then((r) => {
+        const p = r.data
+        setProject(p)
+        if (typeof p?.vote_up_count === 'number') setVoteUp(p.vote_up_count)
+        if (typeof p?.vote_down_count === 'number') setVoteDown(p.vote_down_count)
+      })
       .catch(() => router.replace('/'))
       .finally(() => setLoading(false))
   }, [router])
@@ -109,6 +248,44 @@ export default function ProjectViewPage() {
   useEffect(() => {
     if (projectId) loadVerificationCounts()
   }, [projectId, loadVerificationCounts])
+
+  useEffect(() => {
+    if (!projectId) return
+    api.get<{ data: { up_count: number; down_count: number; my_vote: 'up' | 'down' | null } }>(`/projects/${projectId}/votes`)
+      .then((r) => {
+        if (r?.data) {
+          setVoteUp(r.data.up_count)
+          setVoteDown(r.data.down_count)
+          setMyVote(r.data.my_vote ?? null)
+        }
+      })
+      .catch(() => {})
+  }, [projectId])
+
+  const handleVote = async (vote: 'up' | 'down') => {
+    if (!user) {
+      router.push('/auth/login')
+      return
+    }
+    if (!projectId || voteSubmitting) return
+    setVoteSubmitting(true)
+    try {
+      const r = await api.post<{ data: { up_count: number; down_count: number; my_vote: 'up' | 'down' | null } }>(
+        `/projects/${projectId}/votes`,
+        { vote }
+      )
+      if (r?.data) {
+        setVoteUp(r.data.up_count)
+        setVoteDown(r.data.down_count)
+        setMyVote(r.data.my_vote ?? null)
+      }
+      refreshProject()
+    } catch {
+      // ignore
+    } finally {
+      setVoteSubmitting(false)
+    }
+  }
 
   const handleVerificationSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -265,6 +442,7 @@ export default function ProjectViewPage() {
     { key: 'validation', label: 'Validation' },
     { key: 'updates', label: `Updates ${updates.length}` },
     { key: 'comments', label: `Comments ${comments.length}` },
+    { key: 'ai_board', label: 'AI 이사회' },
   ] as const
 
   return (
@@ -354,6 +532,7 @@ export default function ProjectViewPage() {
                   <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-4">
                     <p className="text-xs font-medium text-slate-600">체험 수</p>
                     <p className="mt-1 text-xl font-bold text-slate-800">{project.verification_count}건</p>
+                    <p className="mt-1 text-xs text-slate-500">Validation 탭에서 3문항에 응답하면 올라가요</p>
                   </div>
                 )}
                 {verificationCounts && typeof project.verification_count === 'number' && project.verification_count > 0 && (verificationCounts.q1_use_intent > 0 || verificationCounts.q2_monthly_pay > 0 || verificationCounts.q3_improvement > 0) && (
@@ -370,6 +549,48 @@ export default function ProjectViewPage() {
                     <p className="text-xs font-medium text-slate-600">최근 업데이트</p>
                     <p className="mt-1 text-sm font-semibold text-slate-800">{formatDate(project.last_update_at)}</p>
                   </div>
+                )}
+              </div>
+              {/* Vibe Score 반영 (올리기 / 낮추기) */}
+              <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white p-4">
+                <span className="text-sm font-medium text-slate-600">Vibe Score에 반영해요</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleVote('up')}
+                    disabled={voteSubmitting || isOwner}
+                    className={`inline-flex items-center gap-1.5 rounded-lg border-2 px-3 py-2 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 ${
+                      myVote === 'up'
+                        ? 'border-teal-500 bg-teal-50 text-teal-700'
+                        : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-teal-300 hover:bg-teal-50/50'
+                    }`}
+                    title="Vibe Score 올리기"
+                  >
+                    <span className="text-base font-bold leading-none text-teal-500" aria-hidden>+</span>
+                    <span>Vibe</span>
+                    <span className="tabular-nums">{voteUp}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleVote('down')}
+                    disabled={voteSubmitting || isOwner}
+                    className={`inline-flex items-center gap-1.5 rounded-lg border-2 px-3 py-2 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 ${
+                      myVote === 'down'
+                        ? 'border-rose-400 bg-rose-50 text-rose-700'
+                        : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-rose-200 hover:bg-rose-50/50'
+                    }`}
+                    title="Vibe Score 낮추기"
+                  >
+                    <span className="text-base font-bold leading-none text-rose-500" aria-hidden>−</span>
+                    <span>비추</span>
+                    <span className="tabular-nums">{voteDown}</span>
+                  </button>
+                </div>
+                {!user && (
+                  <p className="text-xs text-slate-400">로그인하면 Vibe Score에 반영할 수 있어요.</p>
+                )}
+                {isOwner && (
+                  <p className="text-xs text-slate-400">본인 프로젝트에는 투표할 수 없어요.</p>
                 )}
               </div>
               <div className="prose prose-sm max-w-none text-slate-700 whitespace-pre-line">
@@ -483,94 +704,32 @@ export default function ProjectViewPage() {
               </form>
               {comments.length === 0 ? (
                 <p className="text-sm text-slate-500">댓글이 없습니다.</p>
-              ) : (() => {
-                const topLevel = comments.filter((c) => !c.parent_id)
-                const byParent = new Map<string, Comment[]>()
-                for (const c of comments) {
-                  if (c.parent_id) {
-                    if (!byParent.has(c.parent_id)) byParent.set(c.parent_id, [])
-                    byParent.get(c.parent_id)!.push(c)
-                  }
-                }
-                return (
-                  <ul className="space-y-4">
-                    {topLevel.map((c) => (
-                      <li key={c.id} className="border-b border-slate-100 pb-4 last:border-0">
-                        <div className="flex gap-3">
-                          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-teal-100 text-sm font-medium text-teal-700">
-                            {c.user?.name?.[0] ?? 'U'}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="text-sm font-semibold text-slate-900">{c.user?.name}</span>
-                              <span className="text-xs text-slate-400">{formatDate(c.created_at)}</span>
-                              {user && (
-                                <>
-                                  <button
-                                    type="button"
-                                    onClick={() => setReplyToId(replyToId === c.id ? null : c.id)}
-                                    className="text-xs text-teal-600 hover:underline"
-                                  >
-                                    답글
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => { setReportingId(c.id); setReportReason('') }}
-                                    className="text-xs text-slate-400 hover:text-red-600"
-                                  >
-                                    신고
-                                  </button>
-                                </>
-                              )}
-                            </div>
-                            <p className="mt-0.5 text-sm text-slate-700 whitespace-pre-wrap">{c.content}</p>
-                            {replyToId === c.id && (
-                              <form onSubmit={handleReply} className="mt-3 flex gap-2">
-                                <Input
-                                  value={replyText}
-                                  onChange={(e) => setReplyText(e.target.value)}
-                                  placeholder="답글 입력..."
-                                  className="flex-1"
-                                />
-                                <Button type="submit" size="sm" disabled={commenting || !replyText.trim()}>등록</Button>
-                                <Button type="button" variant="ghost" size="sm" onClick={() => { setReplyToId(null); setReplyText('') }}>취소</Button>
-                              </form>
-                            )}
-                            {(byParent.get(c.id) ?? []).length > 0 && (
-                              <ul className="mt-3 ml-4 space-y-2 border-l-2 border-teal-100 pl-4">
-                                {(byParent.get(c.id) ?? []).map((r) => (
-                                  <li key={r.id} className="flex gap-2">
-                                    <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-medium text-slate-600">
-                                      {r.user?.name?.[0] ?? 'U'}
-                                    </div>
-                                    <div className="min-w-0 flex-1">
-                                      <div className="flex items-center gap-2">
-                                        <span className="text-xs font-medium text-slate-800">{r.user?.name}</span>
-                                        <span className="text-xs text-slate-400">{formatDate(r.created_at)}</span>
-                                        {user && (
-                                          <button
-                                            type="button"
-                                            onClick={() => { setReportingId(r.id); setReportReason('') }}
-                                            className="text-xs text-slate-400 hover:text-red-600"
-                                          >
-                                            신고
-                                          </button>
-                                        )}
-                                      </div>
-                                      <p className="mt-0.5 text-sm text-slate-600 whitespace-pre-wrap">{r.content}</p>
-                                    </div>
-                                  </li>
-                                ))}
-                              </ul>
-                            )}
-                          </div>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                )
-              })()}
+              ) : (
+                <ul className="space-y-4">
+                  {buildCommentTree(comments).map((item) => (
+                    <CommentBlock
+                      key={item.comment.id}
+                      item={item}
+                      depth={0}
+                      replyToId={replyToId}
+                      setReplyToId={setReplyToId}
+                      replyText={replyText}
+                      setReplyText={setReplyText}
+                      handleReply={handleReply}
+                      user={user}
+                      commenting={commenting}
+                      formatDate={formatDate}
+                      setReportingId={setReportingId}
+                      setReportReason={setReportReason}
+                    />
+                  ))}
+                </ul>
+              )}
             </div>
+          )}
+
+          {tab === 'ai_board' && projectId && (
+            <AiBoardReportView projectId={projectId} isOwner={!!isOwner} />
           )}
         </div>
 

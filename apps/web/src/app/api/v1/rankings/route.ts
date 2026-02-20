@@ -3,8 +3,8 @@ import { successResponse, errorResponse } from '@/lib/auth'
 
 const LIMIT = 60
 
-function vibeScore(verification: number, comments: number, updates: number): number {
-  return verification * 10 + comments * 2 + updates * 1
+function vibeScore(verification: number, comments: number, updates: number, voteDelta: number): number {
+  return Math.max(0, verification * 10 + comments * 2 + updates * 1 + voteDelta * 2)
 }
 
 // GET /api/v1/rankings — 랭킹 (이번 주 Top / 댓글순 / Vibe Score)
@@ -35,13 +35,14 @@ export async function GET() {
 
   const projectIds = list.map((p: { id: string }) => p.id)
 
-  const [commentsRes, updatesRes, verificationRes, pledgesRes] = await Promise.all([
+  const [commentsRes, updatesRes, verificationRes, pledgesRes, votesRes] = await Promise.all([
     supabase.from('comments').select('project_id').in('project_id', projectIds),
     supabase.from('updates').select('project_id, created_at').in('project_id', projectIds),
     Promise.resolve(
       supabase.from('verification_responses').select('project_id').in('project_id', projectIds)
     ).then((r) => r).catch(() => ({ data: [] as { project_id: string }[] })),
     supabase.from('pledges').select('project_id, amount').in('project_id', projectIds).eq('status', 'completed'),
+    supabase.from('project_votes').select('project_id, vote').in('project_id', projectIds),
   ])
   const progressByProject: Record<string, { current_amount: number; backer_count: number }> = {}
   for (const row of pledgesRes.data ?? []) {
@@ -68,6 +69,12 @@ export async function GET() {
     verificationCountByProject[v.project_id] = (verificationCountByProject[v.project_id] ?? 0) + 1
   }
 
+  const voteDeltaByProject: Record<string, number> = {}
+  for (const row of votesRes.data ?? []) {
+    const pid = row.project_id
+    voteDeltaByProject[pid] = (voteDeltaByProject[pid] ?? 0) + (row.vote === 'up' ? 1 : -1)
+  }
+
   const withScores = list.map((p: Record<string, unknown>) => {
     const pid = p.id as string
     const comments = commentCountByProject[pid] ?? 0
@@ -90,7 +97,7 @@ export async function GET() {
       funding: Array.isArray(rawFunding) ? [fundingMerged] : fundingMerged,
       comments_count: comments,
       last_update_at: lastUpdateByProject[pid] ?? p.updated_at ?? p.created_at,
-      vibe_score: vibeScore(verification, comments, updates),
+      vibe_score: vibeScore(verification, comments, updates, voteDeltaByProject[pid] ?? 0),
       verification_count: verification,
     }
   })

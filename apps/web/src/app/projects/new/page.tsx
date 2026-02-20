@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, FormEvent } from 'react'
+import { useState, useRef, FormEvent, useEffect } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
 import { Select } from '@/components/ui/select'
+import { AiBoardMemberSelector, type AiBoardMember } from '@/components/ai-board/ai-board-member-selector'
 
 const CATEGORY_OPTIONS = [
   { value: 'AI', label: 'AI' },
@@ -93,6 +94,21 @@ export default function NewProjectPage() {
   const [thumbnailUploading, setThumbnailUploading] = useState(false)
   const [thumbnailUploadError, setThumbnailUploadError] = useState('')
   const thumbnailFileRef = useRef<HTMLInputElement>(null)
+  const [aiBoardMembers, setAiBoardMembers] = useState<AiBoardMember[]>([])
+  const [selectedAiBoardIds, setSelectedAiBoardIds] = useState<string[]>([])
+
+  useEffect(() => {
+    api
+      .get<{ data: AiBoardMember[] }>('/ai-board/members')
+      .then((res) => {
+        const list = res?.data ?? []
+        setAiBoardMembers(list)
+        if (list.length > 0) {
+          setSelectedAiBoardIds((prev) => (prev.length === 0 ? list.slice(0, 3).map((m) => m.id) : prev))
+        }
+      })
+      .catch(() => {})
+  }, [])
 
   if (!authLoading && !user) {
     router.replace('/auth/login')
@@ -167,6 +183,9 @@ export default function NewProjectPage() {
           : undefined,
       })
       const projectId = res.data.id
+      if (selectedAiBoardIds.length > 0) {
+        await api.put(`/projects/${projectId}/ai-board/selections`, { member_ids: selectedAiBoardIds })
+      }
       if (form.goal_amount && Number(form.goal_amount) >= 100000 && form.deadline?.trim()) {
         await api.put(`/projects/${projectId}/funding`, {
           goal_amount: Number(form.goal_amount),
@@ -217,9 +236,9 @@ export default function NewProjectPage() {
             서비스를 소개하고 체험 URL을 등록하면 검토 후 공개됩니다. 펀딩은 선택 사항입니다.
           </p>
           <div className="mt-6 flex gap-1.5" aria-hidden>
-            <span className="text-xs font-medium text-slate-400">Step 1 · 2 · 3 · 4</span>
+            <span className="text-xs font-medium text-slate-400">Step 1 · 2 · 3 · 4 · 5</span>
             <div className="ml-2 flex flex-1 gap-1">
-              {[1, 2, 3, 4].map((i) => (
+              {[1, 2, 3, 4, 5].map((i) => (
                 <div key={i} className="h-1 flex-1 rounded-full bg-teal-500/80" />
               ))}
             </div>
@@ -377,11 +396,34 @@ export default function NewProjectPage() {
             </div>
           </section>
 
-          {/* Step 3: 리워드 (선택) */}
+          {/* Step 3: AI 이사회 위원 */}
+          <section className="rounded-2xl border border-slate-200/90 bg-white p-6 shadow-sm sm:p-8">
+            <div className="mb-6 flex items-center gap-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-500 text-sm font-bold text-white shadow-sm">
+                3
+              </span>
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">AI 이사회 위원</h2>
+                <p className="text-sm text-slate-500">나중에 투자 관점 심사를 받을 위원을 미리 골라 두세요</p>
+              </div>
+            </div>
+            {aiBoardMembers.length > 0 ? (
+              <AiBoardMemberSelector
+                members={aiBoardMembers}
+                selectedIds={selectedAiBoardIds}
+                onChange={setSelectedAiBoardIds}
+                disabled={loading}
+              />
+            ) : (
+              <p className="text-sm text-slate-500">위원 목록을 불러오는 중이에요…</p>
+            )}
+          </section>
+
+          {/* Step 4: 리워드 (선택) */}
           <section className="rounded-2xl border border-slate-200/90 bg-white p-6 shadow-sm sm:p-8">
             <div className="mb-6 flex items-center gap-3">
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-teal-500 text-sm font-bold text-white shadow-sm">
-                3
+                4
               </span>
               <div>
                 <h2 className="text-lg font-semibold text-slate-900">리워드 (선택)</h2>
@@ -469,11 +511,11 @@ export default function NewProjectPage() {
             </div>
           </section>
 
-          {/* Step 4: 펀딩 (선택) */}
+          {/* Step 5: 펀딩 (선택) */}
           <section className="rounded-2xl border border-slate-200/90 bg-white p-6 shadow-sm sm:p-8">
             <div className="mb-6 flex items-center gap-3">
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-300 text-sm font-bold text-white shadow-sm">
-                4
+                5
               </span>
               <div>
                 <h2 className="text-lg font-semibold text-slate-900">펀딩 (선택)</h2>

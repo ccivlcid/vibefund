@@ -34,10 +34,11 @@ export async function getProjectWithProgress(id: string) {
   }
   if (funding) funding.backer_count = countRes.count ?? 0
 
-  const [commentsRes, updatesRes, verificationRes] = await Promise.all([
+  const [commentsRes, updatesRes, verificationRes, votesRes] = await Promise.all([
     supabase.from('comments').select('id, body, parent_id, created_at, user:users!user_id (id, name, avatar_url)').eq('project_id', id).order('created_at', { ascending: true }).limit(200),
     supabase.from('updates').select('id, title, body, created_at').eq('project_id', id).order('created_at', { ascending: false }).limit(20),
     supabase.from('verification_responses').select('id', { count: 'exact', head: true }).eq('project_id', id),
+    supabase.from('project_votes').select('vote').eq('project_id', id),
   ])
   const comments = (commentsRes.data ?? []).map((c: { body: string; parent_id?: string | null; [k: string]: unknown }) => ({
     ...c,
@@ -48,7 +49,11 @@ export async function getProjectWithProgress(id: string) {
     content: u.body,
   }))
   const verificationCount = (verificationRes as { count?: number }).count ?? 0
-  const vibeScore = verificationCount * 10 + (comments.length) * 2 + updates.length * 1
+  const votesList = (votesRes.data ?? []) as { vote: string }[]
+  const vote_up_count = votesList.filter((v) => v.vote === 'up').length
+  const vote_down_count = votesList.filter((v) => v.vote === 'down').length
+  const voteDelta = vote_up_count - vote_down_count
+  const vibeScore = Math.max(0, verificationCount * 10 + comments.length * 2 + updates.length * 1 + voteDelta * 2)
   const lastUpdateAt = updates.length > 0 ? (updates[0] as { created_at?: string }).created_at : (project.updated_at ?? project.created_at)
   return {
     ...project,
@@ -58,6 +63,8 @@ export async function getProjectWithProgress(id: string) {
     vibe_score: vibeScore,
     verification_count: verificationCount,
     last_update_at: lastUpdateAt,
+    vote_up_count,
+    vote_down_count,
   }
 }
 
